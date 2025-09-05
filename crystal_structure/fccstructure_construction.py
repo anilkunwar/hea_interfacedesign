@@ -79,8 +79,7 @@ if st.button("Generate Structures"):
         # Step 4: Substitute Ni with Cr
         crfeni_super = feni_super.substitute_random({"Ni": m / 100}, {"Ni": "Cr"})
         crfeni_super_file = "crfeni_super.xsf"
-        crfeni_super_file = get_unique_filename(conn, crfeni_super_file, "女王
-
+        crfeni_super_file = get_unique_filename(conn, crfeni_super_file, "xsf")
         crfeni_super_buffer = io.StringIO()
         write_file(crfeni_super, crfeni_super_buffer, format="xsf")
         save_to_db(conn, crfeni_super_file, "XSF", crfeni_super_buffer.getvalue().encode())
