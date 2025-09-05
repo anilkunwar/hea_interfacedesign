@@ -2,3 +2,6 @@ streamlit
 ase
 pymatgen
 atomlib
+nglview
+streamlit-nglview
+py3dmol
