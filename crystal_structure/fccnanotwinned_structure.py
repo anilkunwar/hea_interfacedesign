@@ -1,8 +1,7 @@
 import streamlit as st
 import sqlite3
 import numpy as np
-import polars as pl
-from atomlib import make, Atoms, AtomCell
+from pymatgen.core import Lattice, Structure
 import random
 import uuid
 import os
@@ -97,17 +96,14 @@ def display_download_section():
     except Exception as e:
         st.sidebar.error(f"Error retrieving files from database: {e}")
 
-def visualize_structure(atoms, format="cif"):
+def visualize_structure(structure, format="cif"):
     """
-    Visualize an atomlib Atoms object using py3Dmol.
+    Visualize a pymatgen Structure object using py3Dmol.
     """
     try:
         with tempfile.TemporaryDirectory() as td:
             temp_file = pathlib.Path(td) / f"temp.{format}"
-            if format == "cif":
-                atoms.write_cif(temp_file)
-            elif format == "xsf":
-                atoms.write_xsf(temp_file)
+            structure.to(filename=temp_file, fmt=format)
             with open(temp_file, "r") as f:
                 data = f.read()
             view = py3Dmol.view(width=600, height=400)
@@ -146,252 +142,184 @@ nx, ny, nz = 10, 7, 10  # Supercell dimensions
 if st.button("Generate Structures"):
     with st.spinner("Generating structures..."):
         try:
-            # Step 1: FCC Ni unit cell with [11-2], [111], [-110] orientation
-            st.write(f"Creating FCC Ni with lattice constant {a} Å and atomic number 28")
-            try:
-                ni_unit = make.fcc(a, 28)  # Use atomic number for Ni
-                st.write(f"Created FCC Ni unit cell. Schema: {ni_unit.atoms.schema}")
-                if ni_unit.atoms.try_get_column("elem") is None or ni_unit.atoms.try_get_column("symbol") is None:
-                    raise ValueError("Missing required columns 'elem' or 'symbol' in ni_unit")
-            except Exception as e:
-                st.warning(f"Failed with atomic number 28: {e}. Trying symbol 'ni'.")
-                try:
-                    ni_unit = make.fcc(a, "ni")  # Try lowercase symbol
-                    st.write(f"Created FCC Ni unit cell. Schema: {ni_unit.atoms.schema}")
-                    if ni_unit.atoms.try_get_column("elem") is None or ni_unit.atoms.try_get_column("symbol") is None:
-                        raise ValueError("Missing required columns 'elem' or 'symbol' in ni_unit")
-                except Exception as e:
-                    st.error(f"Failed with 'ni': {e}. Cannot create FCC Ni unit cell.")
-                    raise
+            # Step 1: FCC Ni unit cell
+            lattice = Lattice.cubic(a)
+            coords = [[0, 0, 0], [0.5, 0.5, 0], [0.5, 0, 0.5], [0, 0.5, 0.5]]
+            ni_unit = Structure(lattice, ["Ni"] * 4, coords, coords_are_cartesian=False)
+            st.write(f"Created FCC Ni unit cell with {len(ni_unit)} atoms")
 
-            # Apply orientation transformation: [11-2], [111], [-110]
+            # Apply orientation: [11-2], [111], [-110]
             orientation_matrix = np.array([
                 [1, 1, -2],  # X aligns with [11-2]
                 [1, 1, 1],   # Y aligns with [111]
                 [-1, 1, 0]   # Z aligns with [-110]
             ])
-            new_cell = ni_unit.cell.transform(orientation_matrix)
-            ni_unit = AtomCell(ni_unit.atoms, new_cell)
-            ni_unit = ni_unit.deduplicate(tol=0.001)  # Remove duplicates
+            new_lattice = Lattice(np.dot(orientation_matrix, ni_unit.lattice.matrix))
+            ni_unit = Structure(new_lattice, ni_unit.species, ni_unit.frac_coords, coords_are_cartesian=False)
             with tempfile.TemporaryDirectory() as td:
-                temp_file = pathlib.Path(td) / "ni_unit.xsf"
-                ni_unit.write_xsf(temp_file)
-                xsf_str = temp_file.read_bytes()
-                ni_unit_file = get_unique_filename(conn, "ni_unit.xsf", "XSF")
-                save_to_db(conn, ni_unit_file, "XSF", xsf_str)
+                temp_file = pathlib.Path(td) / "ni_unit.cif"
+                ni_unit.to(filename=temp_file, fmt="cif")
+                data = temp_file.read_bytes()
+                ni_unit_file = get_unique_filename(conn, "ni_unit.cif", "CIF")
+                save_to_db(conn, ni_unit_file, "CIF", data)
                 st.success(f"Created {ni_unit_file}")
 
-                temp_file = pathlib.Path(td) / "ni_unit.cfg"
-                ni_unit.write_cfg(temp_file)
+                temp_file = pathlib.Path(td) / "ni_unit.xsf"
+                ni_unit.to(filename=temp_file, fmt="xsf")
                 data = temp_file.read_bytes()
-                cfg_file = get_unique_filename(conn, "ni_unit.cfg", "CFG")
-                save_to_db(conn, cfg_file, "CFG", data)
+                cfg_file = get_unique_filename(conn, "ni_unit.xsf", "XSF")
+                save_to_db(conn, cfg_file, "XSF", data)
                 st.success(f"Created {cfg_file}")
 
             # Step 2: Supercell
-            ni_super = ni_unit.replicate((nx, ny, nz))
-            ni_super = ni_super.deduplicate(tol=0.001)
+            ni_super = ni_unit * (nx, ny, nz)
             with tempfile.TemporaryDirectory() as td:
-                temp_file = pathlib.Path(td) / "ni_super.xsf"
-                ni_super.write_xsf(temp_file)
-                xsf_str = temp_file.read_bytes()
-                ni_super_file = get_unique_filename(conn, "ni_super.xsf", "XSF")
-                save_to_db(conn, ni_super_file, "XSF", xsf_str)
+                temp_file = pathlib.Path(td) / "ni_super.cif"
+                ni_super.to(filename=temp_file, fmt="cif")
+                data = temp_file.read_bytes()
+                ni_super_file = get_unique_filename(conn, "ni_super.cif", "CIF")
+                save_to_db(conn, ni_super_file, "CIF", data)
                 st.success(f"Created {ni_super_file}")
 
-                temp_file = pathlib.Path(td) / "ni_super.cfg"
-                ni_super.write_cfg(temp_file)
+                temp_file = pathlib.Path(td) / "ni_super.xsf"
+                ni_super.to(filename=temp_file, fmt="xsf")
                 data = temp_file.read_bytes()
-                cfg_file = get_unique_filename(conn, "ni_super.cfg", "CFG")
-                save_to_db(conn, cfg_file, "CFG", data)
+                cfg_file = get_unique_filename(conn, "ni_super.xsf", "XSF")
+                save_to_db(conn, cfg_file, "XSF", data)
                 st.success(f"Created {cfg_file}")
 
             # Step 3: Substitute Ni → Fe
             feni_super = ni_super.copy()
-            num_atoms = len(feni_super.atoms)
+            num_atoms = len(feni_super)
             num_sub = int(num_atoms * m / 100)
-            ni_indices = feni_super.atoms.filter(pl.col("elem") == 28).index
+            ni_indices = [i for i, s in enumerate(feni_super.species) if s.symbol == "Ni"]
             if len(ni_indices) < num_sub:
                 raise ValueError(f"Insufficient Ni atoms for Fe substitution. Required: {num_sub}, Available: {len(ni_indices)}")
-            sub_indices = random.sample(ni_indices.tolist(), num_sub)
-            feni_super.atoms = feni_super.atoms.with_columns(
-                pl.when(pl.col("index").is_in(sub_indices))
-                .then(pl.lit(26))  # Fe atomic number
-                .otherwise(pl.col("elem"))
-                .alias("elem"),
-                pl.when(pl.col("index").is_in(sub_indices))
-                .then(pl.lit("Fe"))
-                .otherwise(pl.col("symbol"))
-                .alias("symbol")
-            )
-            feni_super = feni_super.deduplicate(tol=0.001)
+            sub_indices = random.sample(ni_indices, num_sub)
+            for idx in sub_indices:
+                feni_super[idx] = "Fe"
             with tempfile.TemporaryDirectory() as td:
-                temp_file = pathlib.Path(td) / "feni_super.xsf"
-                feni_super.write_xsf(temp_file)
-                xsf_str = temp_file.read_bytes()
-                feni_super_file = get_unique_filename(conn, "feni_super.xsf", "XSF")
-                save_to_db(conn, feni_super_file, "XSF", xsf_str)
+                temp_file = pathlib.Path(td) / "feni_super.cif"
+                feni_super.to(filename=temp_file, fmt="cif")
+                data = temp_file.read_bytes()
+                feni_super_file = get_unique_filename(conn, "feni_super.cif", "CIF")
+                save_to_db(conn, feni_super_file, "CIF", data)
                 st.success(f"Created {feni_super_file}")
 
-                temp_file = pathlib.Path(td) / "feni_super.cfg"
-                feni_super.write_cfg(temp_file)
+                temp_file = pathlib.Path(td) / "feni_super.xsf"
+                feni_super.to(filename=temp_file, fmt="xsf")
                 data = temp_file.read_bytes()
-                cfg_file = get_unique_filename(conn, "feni_super.cfg", "CFG")
-                save_to_db(conn, cfg_file, "CFG", data)
+                cfg_file = get_unique_filename(conn, "feni_super.xsf", "XSF")
+                save_to_db(conn, cfg_file, "XSF", data)
                 st.success(f"Created {cfg_file}")
 
             # Step 4: Substitute Ni → Cr
             crfeni_super = feni_super.copy()
-            ni_indices = crfeni_super.atoms.filter(pl.col("elem") == 28).index
+            ni_indices = [i for i, s in enumerate(crfeni_super.species) if s.symbol == "Ni"]
             if len(ni_indices) < num_sub:
                 raise ValueError(f"Insufficient Ni atoms for Cr substitution. Required: {num_sub}, Available: {len(ni_indices)}")
-            sub_indices = random.sample(ni_indices.tolist(), num_sub)
-            crfeni_super.atoms = crfeni_super.atoms.with_columns(
-                pl.when(pl.col("index").is_in(sub_indices))
-                .then(pl.lit(24))  # Cr atomic number
-                .otherwise(pl.col("elem"))
-                .alias("elem"),
-                pl.when(pl.col("index").is_in(sub_indices))
-                .then(pl.lit("Cr"))
-                .otherwise(pl.col("symbol"))
-                .alias("symbol")
-            )
-            crfeni_super = crfeni_super.deduplicate(tol=0.001)
+            sub_indices = random.sample(ni_indices, num_sub)
+            for idx in sub_indices:
+                crfeni_super[idx] = "Cr"
             with tempfile.TemporaryDirectory() as td:
-                temp_file = pathlib.Path(td) / "crfeni_super.xsf"
-                crfeni_super.write_xsf(temp_file)
-                xsf_str = temp_file.read_bytes()
-                crfeni_super_file = get_unique_filename(conn, "crfeni_super.xsf", "XSF")
-                save_to_db(conn, crfeni_super_file, "XSF", xsf_str)
+                temp_file = pathlib.Path(td) / "crfeni_super.cif"
+                crfeni_super.to(filename=temp_file, fmt="cif")
+                data = temp_file.read_bytes()
+                crfeni_super_file = get_unique_filename(conn, "crfeni_super.cif", "CIF")
+                save_to_db(conn, crfeni_super_file, "CIF", data)
                 st.success(f"Created {crfeni_super_file}")
 
-                temp_file = pathlib.Path(td) / "crfeni_super.cfg"
-                crfeni_super.write_cfg(temp_file)
+                temp_file = pathlib.Path(td) / "crfeni_super.xsf"
+                crfeni_super.to(filename=temp_file, fmt="xsf")
                 data = temp_file.read_bytes()
-                cfg_file = get_unique_filename(conn, "crfeni_super.cfg", "CFG")
-                save_to_db(conn, cfg_file, "CFG", data)
+                cfg_file = get_unique_filename(conn, "crfeni_super.xsf", "XSF")
+                save_to_db(conn, cfg_file, "XSF", data)
                 st.success(f"Created {cfg_file}")
 
             # Step 5: Substitute Ni → Co
             cocrfeni_super = crfeni_super.copy()
-            ni_indices = cocrfeni_super.atoms.filter(pl.col("elem") == 28).index
+            ni_indices = [i for i, s in enumerate(cocrfeni_super.species) if s.symbol == "Ni"]
             if len(ni_indices) < num_sub:
                 raise ValueError(f"Insufficient Ni atoms for Co substitution. Required: {num_sub}, Available: {len(ni_indices)}")
-            sub_indices = random.sample(ni_indices.tolist(), num_sub)
-            cocrfeni_super.atoms = cocrfeni_super.atoms.with_columns(
-                pl.when(pl.col("index").is_in(sub_indices))
-                .then(pl.lit(27))  # Co atomic number
-                .otherwise(pl.col("elem"))
-                .alias("elem"),
-                pl.when(pl.col("index").is_in(sub_indices))
-                .then(pl.lit("Co"))
-                .otherwise(pl.col("symbol"))
-                .alias("symbol")
-            )
-            cocrfeni_super = cocrfeni_super.deduplicate(tol=0.001)
+            sub_indices = random.sample(ni_indices, num_sub)
+            for idx in sub_indices:
+                cocrfeni_super[idx] = "Co"
             with tempfile.TemporaryDirectory() as td:
-                temp_file = pathlib.Path(td) / "cocrfeni_super.xsf"
-                cocrfeni_super.write_xsf(temp_file)
-                xsf_str = temp_file.read_bytes()
-                cocrfeni_super_file = get_unique_filename(conn, "cocrfeni_super.xsf", "XSF")
-                save_to_db(conn, cocrfeni_super_file, "XSF", xsf_str)
+                temp_file = pathlib.Path(td) / "cocrfeni_super.cif"
+                cocrfeni_super.to(filename=temp_file, fmt="cif")
+                data = temp_file.read_bytes()
+                cocrfeni_super_file = get_unique_filename(conn, "cocrfeni_super.cif", "CIF")
+                save_to_db(conn, cocrfeni_super_file, "CIF", data)
                 st.success(f"Created {cocrfeni_super_file}")
 
-                temp_file = pathlib.Path(td) / "cocrfeni_super.cfg"
-                cocrfeni_super.write_cfg(temp_file)
+                temp_file = pathlib.Path(td) / "cocrfeni_super.xsf"
+                cocrfeni_super.to(filename=temp_file, fmt="xsf")
                 data = temp_file.read_bytes()
-                cfg_file = get_unique_filename(conn, "cocrfeni_super.cfg", "CFG")
-                save_to_db(conn, cfg_file, "CFG", data)
+                cfg_file = get_unique_filename(conn, "cocrfeni_super.xsf", "XSF")
+                save_to_db(conn, cfg_file, "XSF", data)
                 st.success(f"Created {cfg_file}")
 
             # Step 6: Substitute Ni → Al
             al_super = cocrfeni_super.copy()
-            ni_indices = al_super.atoms.filter(pl.col("elem") == 28).index
+            ni_indices = [i for i, s in enumerate(al_super.species) if s.symbol == "Ni"]
             num_al_sub = int(num_atoms * n / 100)
             if len(ni_indices) < num_al_sub:
                 raise ValueError(f"Insufficient Ni atoms for Al substitution. Required: {num_al_sub}, Available: {len(ni_indices)}")
-            sub_indices = random.sample(ni_indices.tolist(), num_al_sub)
-            al_super.atoms = al_super.atoms.with_columns(
-                pl.when(pl.col("index").is_in(sub_indices))
-                .then(pl.lit(13))  # Al atomic number
-                .otherwise(pl.col("elem"))
-                .alias("elem"),
-                pl.when(pl.col("index").is_in(sub_indices))
-                .then(pl.lit("Al"))
-                .otherwise(pl.col("symbol"))
-                .alias("symbol")
-            )
-            al_super = al_super.deduplicate(tol=0.001)
+            sub_indices = random.sample(ni_indices, num_al_sub)
+            for idx in sub_indices:
+                al_super[idx] = "Al"
             with tempfile.TemporaryDirectory() as td:
-                temp_file = pathlib.Path(td) / "al0p5cocrfeni_super.xsf"
-                al_super.write_xsf(temp_file)
-                xsf_str = temp_file.read_bytes()
-                al_super_file = get_unique_filename(conn, "al0p5cocrfeni_super.xsf", "XSF")
-                save_to_db(conn, al_super_file, "XSF", xsf_str)
+                temp_file = pathlib.Path(td) / "al0p5cocrfeni_super.cif"
+                al_super.to(filename=temp_file, fmt="cif")
+                data = temp_file.read_bytes()
+                al_super_file = get_unique_filename(conn, "al0p5cocrfeni_super.cif", "CIF")
+                save_to_db(conn, al_super_file, "CIF", data)
                 st.success(f"Created {al_super_file}")
 
-                temp_file = pathlib.Path(td) / "al0p5cocrfeni_super.cfg"
-                al_super.write_cfg(temp_file)
+                temp_file = pathlib.Path(td) / "al0p5cocrfeni_super.xsf"
+                al_super.to(filename=temp_file, fmt="xsf")
                 data = temp_file.read_bytes()
-                cfg_file = get_unique_filename(conn, "al0p5cocrfeni_super.cfg", "CFG")
-                save_to_db(conn, cfg_file, "CFG", data)
+                cfg_file = get_unique_filename(conn, "al0p5cocrfeni_super.xsf", "XSF")
+                save_to_db(conn, cfg_file, "XSF", data)
                 st.success(f"Created {cfg_file}")
 
             # Step 7: Mirror across Y=0 with wrapping
             al_mirror = al_super.copy()
-            frac_coords = al_mirror.atoms.coords(frame="cell_frac")
+            frac_coords = al_mirror.frac_coords
             frac_coords[:, 1] = (-frac_coords[:, 1]) % 1.0  # Mirror across Y=0 and wrap
-            al_mirror = al_mirror.with_coords(frac_coords, frame="cell_frac")
-            al_mirror = al_mirror.deduplicate(tol=0.001)
+            al_mirror = Structure(al_mirror.lattice, al_mirror.species, frac_coords, coords_are_cartesian=False)
             with tempfile.TemporaryDirectory() as td:
-                temp_file = pathlib.Path(td) / "al0p5cocrfeni_mirror.xsf"
-                al_mirror.write_xsf(temp_file)
-                xsf_str = temp_file.read_bytes()
-                mirror_file = get_unique_filename(conn, "al0p5cocrfeni_mirror.xsf", "XSF")
-                save_to_db(conn, mirror_file, "XSF", xsf_str)
+                temp_file = pathlib.Path(td) / "al0p5cocrfeni_mirror.cif"
+                al_mirror.to(filename=temp_file, fmt="cif")
+                data = temp_file.read_bytes()
+                mirror_file = get_unique_filename(conn, "al0p5cocrfeni_mirror.cif", "CIF")
+                save_to_db(conn, mirror_file, "CIF", data)
                 st.success(f"Created {mirror_file}")
 
             # Step 8: Merge original and mirrored structures along Y
-            cell_mat = al_super.cell.to_matrix()
+            cell_mat = al_super.lattice.matrix
             cell_mat[1, :] *= 2  # Double Y lattice vector
-            super_cell = al_super.cell.from_matrix(cell_mat)
-            base_frac = al_super.atoms.coords(frame="cell_frac")
-            mirrored_frac = al_mirror.atoms.coords(frame="cell_frac")
+            super_lattice = Lattice(cell_mat)
+            base_frac = al_super.frac_coords
+            mirrored_frac = al_mirror.frac_coords
             mirrored_frac[:, 1] = (mirrored_frac[:, 1] + 0.5) % 1.0  # Shift to top half
-            base_atoms = al_super.atoms.select(["elem", "symbol"])
-            mirrored_atoms = al_mirror.atoms.select(["elem", "symbol"])
             combined_coords = np.vstack([base_frac, mirrored_frac])
-            combined_elements = pl.concat([base_atoms, mirrored_atoms])
-            merged_atoms = pl.DataFrame({
-                "elem": combined_elements["elem"],
-                "symbol": combined_elements["symbol"],
-                "x": combined_coords[:, 0],
-                "y": combined_coords[:, 1],
-                "z": combined_coords[:, 2]
-            })
-            merged_structure = AtomCell(Atoms(merged_atoms), super_cell)
-            merged_structure = merged_structure.deduplicate(tol=0.001)
+            combined_species = al_super.species + al_mirror.species
+            merged_structure = Structure(super_lattice, combined_species, combined_coords, coords_are_cartesian=False)
             with tempfile.TemporaryDirectory() as td:
-                temp_file = pathlib.Path(td) / "al0p5cocrfeni_nanotwin.xsf"
-                merged_structure.write_xsf(temp_file)
-                xsf_str = temp_file.read_bytes()
-                nanotwin_file = get_unique_filename(conn, "al0p5cocrfeni_nanotwin.xsf", "XSF")
-                save_to_db(conn, nanotwin_file, "XSF", xsf_str)
+                temp_file = pathlib.Path(td) / "al0p5cocrfeni_nanotwin.cif"
+                merged_structure.to(filename=temp_file, fmt="cif")
+                data = temp_file.read_bytes()
+                nanotwin_file = get_unique_filename(conn, "al0p5cocrfeni_nanotwin.cif", "CIF")
+                save_to_db(conn, nanotwin_file, "CIF", data)
                 st.success(f"Created {nanotwin_file}")
 
-                temp_file = pathlib.Path(td) / "al0p5cocrfeni_nanotwin.cfg"
-                merged_structure.write_cfg(temp_file)
+                temp_file = pathlib.Path(td) / "al0p5cocrfeni_nanotwin.xsf"
+                merged_structure.to(filename=temp_file, fmt="xsf")
                 data = temp_file.read_bytes()
-                cfg_file = get_unique_filename(conn, "al0p5cocrfeni_nanotwin.cfg", "CFG")
-                save_to_db(conn, cfg_file, "CFG", data)
+                cfg_file = get_unique_filename(conn, "al0p5cocrfeni_nanotwin.xsf", "XSF")
+                save_to_db(conn, cfg_file, "XSF", data)
                 st.success(f"Created {cfg_file}")
-
-                temp_file = pathlib.Path(td) / "al0p5cocrfeni_nanotwin.cif"
-                merged_structure.write_cif(temp_file)
-                data = temp_file.read_bytes()
-                cif_file = get_unique_filename(conn, "al0p5cocrfeni_nanotwin.cif", "CIF")
-                save_to_db(conn, cif_file, "CIF", data)
-                st.success(f"Created {cif_file}")
 
         except Exception as e:
             st.error(f"Error during structure generation: {e}")
@@ -411,7 +339,7 @@ try:
     if not files:
         st.info("No structures available for visualization.")
     else:
-        file_options = [filename for filename, format, _ in files if format in ["XSF", "CIF"]]
+        file_options = [filename for filename, format, _ in files if format in ["CIF", "XSF"]]
         selected_file = st.selectbox("Select a structure to visualize", file_options)
         if selected_file:
             with st.spinner("Loading visualization..."):
@@ -425,11 +353,8 @@ try:
                     temp_file = pathlib.Path(td) / f"temp.{format.lower()}"
                     with open(temp_file, "wb") as f:
                         f.write(data)
-                    if format == "CIF":
-                        atoms = AtomCell.read_cif(temp_file)
-                    elif format == "XSF":
-                        atoms = AtomCell.read_xsf(temp_file)
-                    visualize_structure(atoms, format=format.lower())
+                    structure = Structure.from_file(temp_file)
+                    visualize_structure(structure, format=format.lower())
 
 except Exception as e:
     st.error(f"Error loading visualization: {e}")
