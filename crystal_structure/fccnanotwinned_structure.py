@@ -97,7 +97,7 @@ def display_download_section():
     except Exception as e:
         st.sidebar.error(f"Error retrieving files from database: {e}")
 
-def visualize_structure(structure, format="cif"):
+def visualize_structure(structure, format="cif", mirror_axis="Y"):
     """
     Visualize a pymatgen Structure object using py3Dmol with twin plane.
     """
@@ -116,11 +116,18 @@ def visualize_structure(structure, format="cif"):
                 }
             })
             view.addUnitCell()
-            # Add twin plane (approximate Y=0.5 plane in fractional coords)
+            # Add twin plane at midpoint of selected axis
             lattice = structure.lattice
-            y_mid = lattice.b / 2  # Midpoint of Y lattice vector
-            view.addSurface("VDW", {"color": "yellow", "opacity": 0.3}, 
-                           {"vertex": [[0, y_mid, 0], [lattice.a, y_mid, 0], [lattice.a, y_mid, lattice.c], [0, y_mid, lattice.c]]})
+            if mirror_axis == "X":
+                mid = lattice.a / 2
+                vertices = [[mid, 0, 0], [mid, lattice.b, 0], [mid, lattice.b, lattice.c], [mid, 0, lattice.c]]
+            elif mirror_axis == "Z":
+                mid = lattice.c / 2
+                vertices = [[0, 0, mid], [lattice.a, 0, mid], [lattice.a, lattice.b, mid], [0, lattice.b, mid]]
+            else:  # Y
+                mid = lattice.b / 2
+                vertices = [[0, mid, 0], [lattice.a, mid, 0], [lattice.a, mid, lattice.c], [0, mid, lattice.c]]
+            view.addSurface("VDW", {"color": "yellow", "opacity": 0.3}, {"vertex": vertices})
             view.zoomTo()
             st.components.v1.html(view._make_html(), width=600, height=400)
     except Exception as e:
@@ -139,9 +146,20 @@ if st.button("Clear Database"):
     conn.close()
     st.rerun()
 
-# Lattice Parameters
-st.header("Lattice Parameters")
-a = st.number_input("Lattice constant (Å)", value=3.54, min_value=0.1, format="%.2f")
+# Crystal Type
+st.header("Crystal Type")
+crystal_type = st.selectbox("Select crystal type", ["FCC", "BCC", "BCT", "HCP"], index=0)
+
+# Lattice Constants
+st.header("Lattice Constants")
+col1, col2 = st.columns(2)
+with col1:
+    a = st.number_input("Lattice constant a (Å)", value=3.54, min_value=0.1, format="%.2f")
+with col2:
+    if crystal_type in ["BCT", "HCP"]:
+        c = st.number_input("Lattice constant c (Å)", value=5.78, min_value=0.1, format="%.2f")
+    else:
+        c = None
 
 # Orientation Matrix
 st.header("Orientation Matrix ([hkl] for X, Y, Z)")
@@ -174,7 +192,15 @@ st.header("Substitution Percentages")
 m = st.number_input("Major element substitution percentage (%) (Fe, Cr, Co)", value=22.22, min_value=0.0, max_value=100.0, format="%.2f")
 n = st.number_input("Dopant (Al) substitution percentage (%)", value=11.12, min_value=0.0, max_value=100.0, format="%.2f")
 
-# Validate orientation matrix
+# Mirror Axis
+st.header("Mirror Axis")
+mirror_axis = st.selectbox("Select mirror axis", ["X", "Y", "Z"], index=1)
+
+# Validate inputs
+if (3 * m + n) > 100:
+    st.error("Total substitution percentage (3 * m + n) exceeds 100%. Please adjust m and n.")
+    st.stop()
+
 orientation_matrix = np.array([
     [x_h, x_k, x_l],
     [y_h, y_k, y_l],
@@ -184,60 +210,70 @@ if abs(np.linalg.det(orientation_matrix)) < 1e-5:
     st.error("Orientation matrix is not valid (determinant near zero). Please choose orthogonal directions.")
     st.stop()
 
-# Validate substitution percentages
-if (3 * m + n) > 100:
-    st.error("Total substitution percentage (3 * m + n) exceeds 100%. Please adjust m and n.")
-    st.stop()
-
 # -------------------- Structure Generation -------------------- #
 if st.button("Generate Structures"):
     with st.spinner("Generating structures..."):
         try:
-            # Step 1: FCC Ni unit cell
-            lattice = Lattice.cubic(a)
-            coords = [[0, 0, 0], [0.5, 0.5, 0], [0.5, 0, 0.5], [0, 0.5, 0.5]]
-            ni_unit = Structure(lattice, ["Ni"] * 4, coords, coords_are_cartesian=False)
-            st.write(f"Created FCC Ni unit cell with {len(ni_unit)} atoms")
+            # Step 1: Create unit cell based on crystal type
+            if crystal_type == "FCC":
+                lattice = Lattice.cubic(a)
+                coords = [[0, 0, 0], [0.5, 0.5, 0], [0.5, 0, 0.5], [0, 0.5, 0.5]]
+                species = ["Ni"] * 4
+            elif crystal_type == "BCC":
+                lattice = Lattice.cubic(a)
+                coords = [[0, 0, 0], [0.5, 0.5, 0.5]]
+                species = ["Ni"] * 2
+            elif crystal_type == "BCT":
+                lattice = Lattice.tetragonal(a, c)
+                coords = [[0, 0, 0], [0.5, 0.5, 0.5]]
+                species = ["Ni"] * 2
+            elif crystal_type == "HCP":
+                lattice = Lattice.hexagonal(a, c)
+                coords = [[0, 0, 0], [1/3, 2/3, 0.5]]
+                species = ["Ni"] * 2
+
+            unit_cell = Structure(lattice, species, coords, coords_are_cartesian=False)
+            st.write(f"Created {crystal_type} Ni unit cell with {len(unit_cell)} atoms")
 
             # Apply orientation
-            new_lattice = Lattice(np.dot(orientation_matrix, ni_unit.lattice.matrix))
-            ni_unit = Structure(new_lattice, ni_unit.species, ni_unit.frac_coords, coords_are_cartesian=False)
+            new_lattice = Lattice(np.dot(orientation_matrix, unit_cell.lattice.matrix))
+            unit_cell = Structure(new_lattice, unit_cell.species, unit_cell.frac_coords, coords_are_cartesian=False)
             with tempfile.TemporaryDirectory() as td:
-                temp_file = pathlib.Path(td) / "ni_unit.cif"
-                ni_unit.to(filename=temp_file, fmt="cif")
+                temp_file = pathlib.Path(td) / f"ni_unit_{crystal_type.lower()}.cif"
+                unit_cell.to(filename=temp_file, fmt="cif")
                 data = temp_file.read_bytes()
-                ni_unit_file = get_unique_filename(conn, "ni_unit.cif", "CIF")
-                save_to_db(conn, ni_unit_file, "CIF", data)
-                st.success(f"Created {ni_unit_file}")
+                unit_file = get_unique_filename(conn, f"ni_unit_{crystal_type.lower()}.cif", "CIF")
+                save_to_db(conn, unit_file, "CIF", data)
+                st.success(f"Created {unit_file}")
 
-                temp_file = pathlib.Path(td) / "ni_unit.xsf"
-                ni_unit.to(filename=temp_file, fmt="xsf")
+                temp_file = pathlib.Path(td) / f"ni_unit_{crystal_type.lower()}.xsf"
+                unit_cell.to(filename=temp_file, fmt="xsf")
                 data = temp_file.read_bytes()
-                cfg_file = get_unique_filename(conn, "ni_unit.xsf", "XSF")
+                cfg_file = get_unique_filename(conn, f"ni_unit_{crystal_type.lower()}.xsf", "XSF")
                 save_to_db(conn, cfg_file, "XSF", data)
                 st.success(f"Created {cfg_file}")
 
             # Step 2: Supercell
-            ni_super = ni_unit * (nx, ny, nz)
-            atom_counts = Counter(str(s) for s in ni_super.species)
-            st.write(f"Supercell atom counts: {atom_counts['Ni']} Ni (Total: {len(ni_super)} atoms)")
+            super_cell = unit_cell * (nx, ny, nz)
+            atom_counts = Counter(str(s) for s in super_cell.species)
+            st.write(f"Supercell atom counts: {atom_counts['Ni']} Ni (Total: {len(super_cell)} atoms)")
             with tempfile.TemporaryDirectory() as td:
-                temp_file = pathlib.Path(td) / "ni_super.cif"
-                ni_super.to(filename=temp_file, fmt="cif")
+                temp_file = pathlib.Path(td) / f"ni_super_{crystal_type.lower()}.cif"
+                super_cell.to(filename=temp_file, fmt="cif")
                 data = temp_file.read_bytes()
-                ni_super_file = get_unique_filename(conn, "ni_super.cif", "CIF")
-                save_to_db(conn, ni_super_file, "CIF", data)
-                st.success(f"Created {ni_super_file}")
+                super_file = get_unique_filename(conn, f"ni_super_{crystal_type.lower()}.cif", "CIF")
+                save_to_db(conn, super_file, "CIF", data)
+                st.success(f"Created {super_file}")
 
-                temp_file = pathlib.Path(td) / "ni_super.xsf"
-                ni_super.to(filename=temp_file, fmt="xsf")
+                temp_file = pathlib.Path(td) / f"ni_super_{crystal_type.lower()}.xsf"
+                super_cell.to(filename=temp_file, fmt="xsf")
                 data = temp_file.read_bytes()
-                cfg_file = get_unique_filename(conn, "ni_super.xsf", "XSF")
+                cfg_file = get_unique_filename(conn, f"ni_super_{crystal_type.lower()}.xsf", "XSF")
                 save_to_db(conn, cfg_file, "XSF", data)
                 st.success(f"Created {cfg_file}")
 
             # Step 3: Substitute Ni → Fe
-            feni_super = ni_super.copy()
+            feni_super = super_cell.copy()
             num_atoms = len(feni_super)
             num_sub = int(num_atoms * m / 100)
             ni_indices = [i for i, s in enumerate(feni_super.species) if s.symbol == "Ni"]
@@ -249,17 +285,17 @@ if st.button("Generate Structures"):
             atom_counts = Counter(str(s) for s in feni_super.species)
             st.write(f"Fe substitution atom counts: {atom_counts['Ni']} Ni, {atom_counts['Fe']} Fe (Total: {len(feni_super)} atoms)")
             with tempfile.TemporaryDirectory() as td:
-                temp_file = pathlib.Path(td) / "feni_super.cif"
+                temp_file = pathlib.Path(td) / f"feni_super_{crystal_type.lower()}.cif"
                 feni_super.to(filename=temp_file, fmt="cif")
                 data = temp_file.read_bytes()
-                feni_super_file = get_unique_filename(conn, "feni_super.cif", "CIF")
+                feni_super_file = get_unique_filename(conn, f"feni_super_{crystal_type.lower()}.cif", "CIF")
                 save_to_db(conn, feni_super_file, "CIF", data)
                 st.success(f"Created {feni_super_file}")
 
-                temp_file = pathlib.Path(td) / "feni_super.xsf"
+                temp_file = pathlib.Path(td) / f"feni_super_{crystal_type.lower()}.xsf"
                 feni_super.to(filename=temp_file, fmt="xsf")
                 data = temp_file.read_bytes()
-                cfg_file = get_unique_filename(conn, "feni_super.xsf", "XSF")
+                cfg_file = get_unique_filename(conn, f"feni_super_{crystal_type.lower()}.xsf", "XSF")
                 save_to_db(conn, cfg_file, "XSF", data)
                 st.success(f"Created {cfg_file}")
 
@@ -274,17 +310,17 @@ if st.button("Generate Structures"):
             atom_counts = Counter(str(s) for s in crfeni_super.species)
             st.write(f"Cr substitution atom counts: {atom_counts['Ni']} Ni, {atom_counts['Fe']} Fe, {atom_counts['Cr']} Cr (Total: {len(crfeni_super)} atoms)")
             with tempfile.TemporaryDirectory() as td:
-                temp_file = pathlib.Path(td) / "crfeni_super.cif"
+                temp_file = pathlib.Path(td) / f"crfeni_super_{crystal_type.lower()}.cif"
                 crfeni_super.to(filename=temp_file, fmt="cif")
                 data = temp_file.read_bytes()
-                crfeni_super_file = get_unique_filename(conn, "crfeni_super.cif", "CIF")
+                crfeni_super_file = get_unique_filename(conn, f"crfeni_super_{crystal_type.lower()}.cif", "CIF")
                 save_to_db(conn, crfeni_super_file, "CIF", data)
                 st.success(f"Created {crfeni_super_file}")
 
-                temp_file = pathlib.Path(td) / "crfeni_super.xsf"
+                temp_file = pathlib.Path(td) / f"crfeni_super_{crystal_type.lower()}.xsf"
                 crfeni_super.to(filename=temp_file, fmt="xsf")
                 data = temp_file.read_bytes()
-                cfg_file = get_unique_filename(conn, "crfeni_super.xsf", "XSF")
+                cfg_file = get_unique_filename(conn, f"crfeni_super_{crystal_type.lower()}.xsf", "XSF")
                 save_to_db(conn, cfg_file, "XSF", data)
                 st.success(f"Created {cfg_file}")
 
@@ -299,19 +335,19 @@ if st.button("Generate Structures"):
             atom_counts = Counter(str(s) for s in cocrfeni_super.species)
             st.write(f"Co substitution atom counts: {atom_counts['Ni']} Ni, {atom_counts['Fe']} Fe, {atom_counts['Cr']} Cr, {atom_counts['Co']} Co (Total: {len(cocrfeni_super)} atoms)")
             with tempfile.TemporaryDirectory() as td:
-                temp_file = pathlib.Path(td) / "cocrfeni_super.cif"
+                temp_file = pathlib.Path(td) / f"cocrfeni_super_{crystal_type.lower()}.cif"
                 cocrfeni_super.to(filename=temp_file, fmt="cif")
                 data = temp_file.read_bytes()
-                cocrfeni_super_file = get_unique_filename(conn, "cocrfeni_super.cif", "CIF")
+                cocrfeni_super_file = get_unique_filename(conn, f"cocrfeni_super_{crystal_type.lower()}.cif", "CIF")
                 save_to_db(conn, cocrfeni_super_file, "CIF", data)
                 st.success(f"Created {cocrfeni_super_file}")
 
-                temp_file = pathlib.Path(td) / "cocrfeni_super.xsf"
+                temp_file = pathlib.Path(td) / f"cocrfeni_super_{crystal_type.lower()}.xsf"
                 cocrfeni_super.to(filename=temp_file, fmt="xsf")
                 data = temp_file.read_bytes()
-                cfg_file = get_unique_filename(conn, "cocrfeni_super.xsf", "XSF")
+                cfg_file = get_unique_filename(conn, f"cocrfeni_super_{crystal_type.lower()}.xsf", "XSF")
                 save_to_db(conn, cfg_file, "XSF", data)
-                st.success(f"Created {cfg_file}")
+                st.success(f"Created {cocrfeni_super_file}")
 
             # Step 6: Substitute Ni → Al
             al_super = cocrfeni_super.copy()
@@ -325,70 +361,71 @@ if st.button("Generate Structures"):
             atom_counts = Counter(str(s) for s in al_super.species)
             st.write(f"Al substitution atom counts: {atom_counts['Ni']} Ni, {atom_counts['Fe']} Fe, {atom_counts['Cr']} Cr, {atom_counts['Co']} Co, {atom_counts['Al']} Al (Total: {len(al_super)} atoms)")
             with tempfile.TemporaryDirectory() as td:
-                temp_file = pathlib.Path(td) / "al0p5cocrfeni_super.cif"
+                temp_file = pathlib.Path(td) / f"al0p5cocrfeni_super_{crystal_type.lower()}.cif"
                 al_super.to(filename=temp_file, fmt="cif")
                 data = temp_file.read_bytes()
-                al_super_file = get_unique_filename(conn, "al0p5cocrfeni_super.cif", "CIF")
+                al_super_file = get_unique_filename(conn, f"al0p5cocrfeni_super_{crystal_type.lower()}.cif", "CIF")
                 save_to_db(conn, al_super_file, "CIF", data)
                 st.success(f"Created {al_super_file}")
 
-                temp_file = pathlib.Path(td) / "al0p5cocrfeni_super.xsf"
+                temp_file = pathlib.Path(td) / f"al0p5cocrfeni_super_{crystal_type.lower()}.xsf"
                 al_super.to(filename=temp_file, fmt="xsf")
                 data = temp_file.read_bytes()
-                cfg_file = get_unique_filename(conn, "al0p5cocrfeni_super.xsf", "XSF")
+                cfg_file = get_unique_filename(conn, f"al0p5cocrfeni_super_{crystal_type.lower()}.xsf", "XSF")
                 save_to_db(conn, cfg_file, "XSF", data)
                 st.success(f"Created {cfg_file}")
 
-            # Step 7: Mirror across Y=0 with wrapping
+            # Step 7: Mirror across selected axis
             al_mirror = al_super.copy()
             frac_coords = al_mirror.frac_coords.copy()
-            frac_coords[:, 1] = (-frac_coords[:, 1]) % 1.0  # Mirror across Y=0 and wrap
+            axis_idx = {"X": 0, "Y": 1, "Z": 2}[mirror_axis]
+            frac_coords[:, axis_idx] = (-frac_coords[:, axis_idx]) % 1.0  # Mirror and wrap
             al_mirror = Structure(al_mirror.lattice, al_mirror.species, frac_coords, coords_are_cartesian=False)
             atom_counts = Counter(str(s) for s in al_mirror.species)
             st.write(f"Mirrored structure atom counts: {atom_counts['Ni']} Ni, {atom_counts['Fe']} Fe, {atom_counts['Cr']} Cr, {atom_counts['Co']} Co, {atom_counts['Al']} Al (Total: {len(al_mirror)} atoms)")
-            y_coords = al_mirror.frac_coords[:, 1]
-            st.write(f"Y fractional coordinates range: min={y_coords.min():.3f}, max={y_coords.max():.3f}")
+            mirror_coords = al_mirror.frac_coords[:, axis_idx]
+            st.write(f"{mirror_axis} fractional coordinates range: min={mirror_coords.min():.3f}, max={mirror_coords.max():.3f}")
             with tempfile.TemporaryDirectory() as td:
-                temp_file = pathlib.Path(td) / "al0p5cocrfeni_mirror.cif"
+                temp_file = pathlib.Path(td) / f"al0p5cocrfeni_mirror_{crystal_type.lower()}.cif"
                 al_mirror.to(filename=temp_file, fmt="cif")
                 data = temp_file.read_bytes()
-                mirror_file = get_unique_filename(conn, "al0p5cocrfeni_mirror.cif", "CIF")
+                mirror_file = get_unique_filename(conn, f"al0p5cocrfeni_mirror_{crystal_type.lower()}.cif", "CIF")
                 save_to_db(conn, mirror_file, "CIF", data)
                 st.success(f"Created {mirror_file}")
 
-                temp_file = pathlib.Path(td) / "al0p5cocrfeni_mirror.xsf"
+                temp_file = pathlib.Path(td) / f"al0p5cocrfeni_mirror_{crystal_type.lower()}.xsf"
                 al_mirror.to(filename=temp_file, fmt="xsf")
                 data = temp_file.read_bytes()
-                cfg_file = get_unique_filename(conn, "al0p5cocrfeni_mirror.xsf", "XSF")
+                cfg_file = get_unique_filename(conn, f"al0p5cocrfeni_mirror_{crystal_type.lower()}.xsf", "XSF")
                 save_to_db(conn, cfg_file, "XSF", data)
                 st.success(f"Created {cfg_file}")
 
-            # Step 8: Merge original and mirrored structures along Y
+            # Step 8: Merge original and mirrored structures along selected axis
             cell_mat = al_super.lattice.matrix.copy()
-            cell_mat[1, :] *= 2
+            cell_mat[axis_idx, :] *= 2
             super_lattice = Lattice(cell_mat)
             base_frac = al_super.frac_coords
             mirrored_frac = al_mirror.frac_coords
-            mirrored_frac[:, 1] = (mirrored_frac[:, 1] + 0.5) % 1.0
+            mirrored_frac[:, axis_idx] = (mirrored_frac[:, axis_idx] + 0.5) % 1.0
             combined_coords = np.vstack([base_frac, mirrored_frac])
             combined_species = al_super.species + al_mirror.species
             merged_structure = Structure(super_lattice, combined_species, combined_coords, coords_are_cartesian=False)
             atom_counts = Counter(str(s) for s in merged_structure.species)
             st.write(f"Nanotwin atom counts: {atom_counts['Ni']} Ni, {atom_counts['Fe']} Fe, {atom_counts['Cr']} Cr, {atom_counts['Co']} Co, {atom_counts['Al']} Al (Total: {len(merged_structure)} atoms)")
-            y_coords = merged_structure.frac_coords[:, 1]
-            st.write(f"Nanotwin Y fractional coordinates range: min={y_coords.min():.3f}, max={y_coords.max():.3f}")
+            nanotwin_coords = merged_structure.frac_coords[:, axis_idx]
+            st.write(f"Nanotwin {mirror_axis} fractional coordinates range: min={nanotwin_coords.min():.3f}, max={nanotwin_coords.max():.3f}")
             with tempfile.TemporaryDirectory() as td:
-                temp_file = pathlib.Path(td) / "al0p5cocrfeni_nanotwin.cif"
+                temp_file = pathlib.Path(td) / f"al0p5cocrfeni_nanotwin_{crystal_type.lower()}.cif"
                 merged_structure.to(filename=temp_file, fmt="cif")
                 data = temp_file.read_bytes()
-                nanotwin_file = get_unique_filename(conn, "al0p5cocrfeni_nanotwin.cif", "CIF")
+                nanotwin_file = get_unique_filename(conn, f"al0p5cocrfeni_nanotwin_{crystal_type.lower()}.cif", "CIF")
                 save_to_db(conn, nanotwin_file, "CIF", data)
                 st.success(f"Created {nanotwin_file}")
 
-                temp_file = pathlib.Path(td) / "al0p5cocrfeni_nanotwin.xsf"
+                temp_file = pathlib.Path(td) / f"al0p5cocrfeni_nanotwin_{crystal_type.lower()}.xsf"
                 merged_structure.to(filename=temp_file, fmt="xsf")
                 data = temp_file.read_bytes()
-                cfg_file = get_unique_filename(conn, "al0p5cocrfeni_nanotwin.xsf", "XSF")
+                cfg_file = get_unique_filename(conn, f"al0p5cocrfeni_nanotwin_{crystal_type.lower()}.xsf", "XSF")
                 save_to_db(conn, cfg_file, "XSF", data)
                 st.success(f"Created {cfg_file}")
 
@@ -425,7 +462,7 @@ try:
                     with open(temp_file, "wb") as f:
                         f.write(data)
                     structure = Structure.from_file(temp_file)
-                    visualize_structure(structure, format=format.lower())
+                    visualize_structure(structure, format=format.lower(), mirror_axis=mirror_axis)
 
 except Exception as e:
     st.error(f"Error loading visualization: {e}")
