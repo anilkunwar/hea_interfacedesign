@@ -139,10 +139,55 @@ if st.button("Clear Database"):
     conn.close()
     st.rerun()
 
+# Lattice Parameters
+st.header("Lattice Parameters")
 a = st.number_input("Lattice constant (Å)", value=3.54, min_value=0.1, format="%.2f")
-m = st.number_input("Major element substitution percentage (%)", value=22.22, min_value=0.0, max_value=100.0, format="%.2f")
+
+# Orientation Matrix
+st.header("Orientation Matrix ([hkl] for X, Y, Z)")
+col1, col2, col3 = st.columns(3)
+with col1:
+    x_h = st.number_input("X [h]", value=1, step=1, format="%d", key="x_h")
+    x_k = st.number_input("X [k]", value=1, step=1, format="%d", key="x_k")
+    x_l = st.number_input("X [l]", value=-2, step=1, format="%d", key="x_l")
+with col2:
+    y_h = st.number_input("Y [h]", value=1, step=1, format="%d", key="y_h")
+    y_k = st.number_input("Y [k]", value=1, step=1, format="%d", key="y_k")
+    y_l = st.number_input("Y [l]", value=1, step=1, format="%d", key="y_l")
+with col3:
+    z_h = st.number_input("Z [h]", value=-1, step=1, format="%d", key="z_h")
+    z_k = st.number_input("Z [k]", value=1, step=1, format="%d", key="z_k")
+    z_l = st.number_input("Z [l]", value=0, step=1, format="%d", key="z_l")
+
+# Supercell Multipliers
+st.header("Supercell Multipliers")
+col1, col2, col3 = st.columns(3)
+with col1:
+    nx = st.number_input("nx", value=10, min_value=1, step=1, format="%d")
+with col2:
+    ny = st.number_input("ny", value=7, min_value=1, step=1, format="%d")
+with col3:
+    nz = st.number_input("nz", value=10, min_value=1, step=1, format="%d")
+
+# Substitution Percentages
+st.header("Substitution Percentages")
+m = st.number_input("Major element substitution percentage (%) (Fe, Cr, Co)", value=22.22, min_value=0.0, max_value=100.0, format="%.2f")
 n = st.number_input("Dopant (Al) substitution percentage (%)", value=11.12, min_value=0.0, max_value=100.0, format="%.2f")
-nx, ny, nz = 10, 7, 10  # Supercell dimensions
+
+# Validate orientation matrix
+orientation_matrix = np.array([
+    [x_h, x_k, x_l],
+    [y_h, y_k, y_l],
+    [z_h, z_k, z_l]
+], dtype=float)
+if abs(np.linalg.det(orientation_matrix)) < 1e-5:
+    st.error("Orientation matrix is not valid (determinant near zero). Please choose orthogonal directions.")
+    st.stop()
+
+# Validate substitution percentages
+if (3 * m + n) > 100:
+    st.error("Total substitution percentage (3 * m + n) exceeds 100%. Please adjust m and n.")
+    st.stop()
 
 # -------------------- Structure Generation -------------------- #
 if st.button("Generate Structures"):
@@ -154,12 +199,7 @@ if st.button("Generate Structures"):
             ni_unit = Structure(lattice, ["Ni"] * 4, coords, coords_are_cartesian=False)
             st.write(f"Created FCC Ni unit cell with {len(ni_unit)} atoms")
 
-            # Apply orientation: [11-2], [111], [-110]
-            orientation_matrix = np.array([
-                [1, 1, -2],  # X aligns with [11-2]
-                [1, 1, 1],   # Y aligns with [111]
-                [-1, 1, 0]   # Z aligns with [-110]
-            ])
+            # Apply orientation
             new_lattice = Lattice(np.dot(orientation_matrix, ni_unit.lattice.matrix))
             ni_unit = Structure(new_lattice, ni_unit.species, ni_unit.frac_coords, coords_are_cartesian=False)
             with tempfile.TemporaryDirectory() as td:
@@ -301,12 +341,11 @@ if st.button("Generate Structures"):
 
             # Step 7: Mirror across Y=0 with wrapping
             al_mirror = al_super.copy()
-            frac_coords = al_mirror.frac_coords.copy()  # Copy to ensure writable
+            frac_coords = al_mirror.frac_coords.copy()
             frac_coords[:, 1] = (-frac_coords[:, 1]) % 1.0  # Mirror across Y=0 and wrap
             al_mirror = Structure(al_mirror.lattice, al_mirror.species, frac_coords, coords_are_cartesian=False)
             atom_counts = Counter(str(s) for s in al_mirror.species)
             st.write(f"Mirrored structure atom counts: {atom_counts['Ni']} Ni, {atom_counts['Fe']} Fe, {atom_counts['Cr']} Cr, {atom_counts['Co']} Co, {atom_counts['Al']} Al (Total: {len(al_mirror)} atoms)")
-            # Validate twin plane alignment
             y_coords = al_mirror.frac_coords[:, 1]
             st.write(f"Y fractional coordinates range: min={y_coords.min():.3f}, max={y_coords.max():.3f}")
             with tempfile.TemporaryDirectory() as td:
@@ -325,18 +364,17 @@ if st.button("Generate Structures"):
                 st.success(f"Created {cfg_file}")
 
             # Step 8: Merge original and mirrored structures along Y
-            cell_mat = al_super.lattice.matrix.copy()  # Copy to avoid read-only error
-            cell_mat[1, :] *= 2  # Double Y lattice vector
+            cell_mat = al_super.lattice.matrix.copy()
+            cell_mat[1, :] *= 2
             super_lattice = Lattice(cell_mat)
             base_frac = al_super.frac_coords
             mirrored_frac = al_mirror.frac_coords
-            mirrored_frac[:, 1] = (mirrored_frac[:, 1] + 0.5) % 1.0  # Shift to top half
+            mirrored_frac[:, 1] = (mirrored_frac[:, 1] + 0.5) % 1.0
             combined_coords = np.vstack([base_frac, mirrored_frac])
             combined_species = al_super.species + al_mirror.species
             merged_structure = Structure(super_lattice, combined_species, combined_coords, coords_are_cartesian=False)
             atom_counts = Counter(str(s) for s in merged_structure.species)
             st.write(f"Nanotwin atom counts: {atom_counts['Ni']} Ni, {atom_counts['Fe']} Fe, {atom_counts['Cr']} Cr, {atom_counts['Co']} Co, {atom_counts['Al']} Al (Total: {len(merged_structure)} atoms)")
-            # Validate nanotwin Y coordinates
             y_coords = merged_structure.frac_coords[:, 1]
             st.write(f"Nanotwin Y fractional coordinates range: min={y_coords.min():.3f}, max={y_coords.max():.3f}")
             with tempfile.TemporaryDirectory() as td:
