@@ -9,8 +9,6 @@ import uuid
 import os
 import tempfile
 import pathlib
-import nglview as nv
-from streamlit_nglview import st_nglview
 import py3dmol
 
 # -------------------- Database helpers -------------------- #
@@ -33,7 +31,7 @@ def get_unique_filename(conn, filename, format):
 
     counter = 1
     while True:
-        c.execute("SELECT filename, format FROM structures WHERE filename = ?", (proposed_filename,))
+        c.execute("SELECT filename FROM structures WHERE filename = ?", (proposed_filename,))
         if not c.fetchone():
             return proposed_filename  # Unique filename found
         proposed_filename = f"{base_name}_{counter}.{ext}"
@@ -102,10 +100,9 @@ def display_download_section():
 
 def visualize_structure(structure, format="cif"):
     """
-    Visualize a pymatgen structure using nglview or py3dmol as fallback.
+    Visualize a pymatgen structure using py3dmol.
     """
     try:
-        # Try nglview first
         with tempfile.TemporaryDirectory() as td:
             temp_file = pathlib.Path(td) / f"temp.{format}"
             if format == "cif":
@@ -113,24 +110,16 @@ def visualize_structure(structure, format="cif"):
             elif format == "xsf":
                 with open(temp_file, "w") as f:
                     f.write(structure.to(fmt="xsf"))
-            view = nv.show_file(str(temp_file))
-            view.add_unitcell()
-            view.add_spacefill(radius_type="vdw", scale=0.3)
-            st_nglview(view, height="500px")
-    except Exception as e:
-        st.warning(f"NGLView failed: {e}. Falling back to Py3DMol.")
-        # Fallback to py3dmol
-        with tempfile.TemporaryDirectory() as td:
-            temp_file = pathlib.Path(td) / "temp.cif"
-            CifWriter(structure).write_file(str(temp_file))
             with open(temp_file, "r") as f:
-                cif_data = f.read()
+                data = f.read()
             view = py3dmol.view(width=600, height=400)
-            view.addModel(cif_data, "cif")
+            view.addModel(data, format)
             view.setStyle({"sphere": {"radius": 0.5}})
             view.addUnitCell()
             view.zoomTo()
             st.components.v1.html(view._make_html(), width=600, height=400)
+    except Exception as e:
+        st.error(f"Error visualizing structure: {e}")
 
 # -------------------- Streamlit UI -------------------- #
 st.title("Crystal Structure Generator (Al0.5CoCrFeNi Nanotwin)")
@@ -317,7 +306,7 @@ if st.button("Generate Structures"):
                 data = p.read_bytes()
                 cfg_file = get_unique_filename(conn, "al0p5cocrfeni_nanotwin.cfg", "CFG")
                 save_to_db(conn, cfg_file, "CFG", data)
-                st.success(f"Created {cfg_file}")
+            st.success(f"Created {cfg_file}")
 
             # Save CIF for nanotwin
             with tempfile.TemporaryDirectory() as td:
