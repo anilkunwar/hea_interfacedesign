@@ -18,17 +18,23 @@ def init_db():
     conn.commit()
     return conn
 
-# Check if filename exists in database and prompt for new name
+# Check if filename exists in database and prompt for a unique name
 def get_unique_filename(conn, filename, format):
-    # Remove any existing extension to avoid duplication
     base_name = os.path.splitext(filename)[0]
     c = conn.cursor()
-    c.execute("SELECT filename FROM structures WHERE filename = ?", (f"{base_name}.{format.lower()}",))
+    proposed_filename = f"{base_name}.{format.lower()}"
+    c.execute("SELECT filename FROM structures WHERE filename = ?", (proposed_filename,))
+    
     if c.fetchone():
-        st.warning(f"File '{base_name}.{format.lower()}' already exists.")
-        new_name = st.text_input(f"Enter a new name for {base_name} (without extension):", base_name)
-        return f"{new_name}.{format.lower()}"
-    return f"{base_name}.{format.lower()}"
+        st.warning(f"File '{proposed_filename}' already exists.")
+        while True:
+            new_name = st.text_input(f"Enter a new name for {base_name} (without extension):", f"{base_name}_new")
+            proposed_filename = f"{new_name}.{format.lower()}"
+            c.execute("SELECT filename FROM structures WHERE filename = ?", (proposed_filename,))
+            if not c.fetchone():
+                return proposed_filename
+            st.error(f"Filename '{proposed_filename}' already exists. Please choose a different name.")
+    return proposed_filename
 
 # Save file to SQLite
 def save_to_db(conn, filename, format, data):
@@ -45,8 +51,22 @@ def save_to_db(conn, filename, format, data):
         st.error(f"Error saving to database: {e}")
         raise
 
+# Clear database (optional, for testing or resetting)
+def clear_database(conn):
+    c = conn.cursor()
+    c.execute("DELETE FROM structures")
+    conn.commit()
+    st.success("Database cleared successfully.")
+
 # Streamlit app
 st.title("Crystal Structure Generator (Al0.5CoCrFeNi Nanotwin)")
+
+# Option to clear database
+if st.button("Clear Database"):
+    conn = init_db()
+    clear_database(conn)
+    conn.close()
+    st.experimental_rerun()
 
 # Input parameters
 a = st.number_input("Lattice constant (Å)", value=3.54, min_value=0.1, format="%.2f")
