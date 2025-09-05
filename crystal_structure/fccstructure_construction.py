@@ -122,7 +122,7 @@ if st.button("Generate Structures"):
         al0p5cocrfeni_nanotwin_file = "al0p5cocrfeni_nanotwin.xsf"
         al0p5cocrfeni_nanotwin_file = get_unique_filename(conn, al0p5cocrfeni_nanotwin_file, "xsf")
         al0p5cocrfeni_nanotwin_buffer = io.StringIO()
-        write_file( Никто: merged_atoms, al0p5cocrfeni_nanotwin_buffer, format="xsf")
+        write_file(merged_atoms, al0p5cocrfeni_nanotwin_buffer, format="xsf")
         save_to_db(conn, al0p5cocrfeni_nanotwin_file, "XSF", al0p5cocrfeni_nanotwin_buffer.getvalue().encode())
         st.success(f"Created {al0p5cocrfeni_nanotwin_file}")
 
