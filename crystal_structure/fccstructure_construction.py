@@ -84,7 +84,7 @@ if st.button("Generate Structures"):
         feni_super_file = get_unique_filename(conn, feni_super_file, "xsf")
         feni_super_buffer = io.StringIO()
         feni_super.to(filename=feni_super_buffer, fmt="xsf")
-        save_to_db(feni_super_file, "XSF", feni_super_buffer.getvalue().encode())
+        save_to_db(conn, feni_super_file, "XSF", feni_super_buffer.getvalue().encode())
         st.success(f"Created {feni_super_file}")
 
         # Step 4: Substitute Ni with Cr
