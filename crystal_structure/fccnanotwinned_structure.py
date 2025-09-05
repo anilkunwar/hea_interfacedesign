@@ -142,16 +142,18 @@ if st.button("Generate Structures"):
     with st.spinner("Generating structures..."):
         try:
             # Step 1: FCC Ni unit cell with [11-2], [111], [-110] orientation
+            st.write(f"Creating FCC Ni with lattice constant {a} Å and atomic number 28")
             try:
-                st.write(f"Attempting to create FCC Ni with element 'Ni'")
-                ni_unit = make.fcc(a, "Ni")  # Try with "Ni"
+                ni_unit = make.fcc(a, 28)  # Use atomic number for Ni
+                st.write(f"Created FCC Ni unit cell: {ni_unit.atoms.schema}")
             except Exception as e:
-                st.warning(f"Failed with 'Ni': {e}. Trying lowercase 'ni'.")
+                st.warning(f"Failed with atomic number 28: {e}. Trying symbol 'ni'.")
                 try:
-                    ni_unit = make.fcc(a, "ni")  # Try lowercase
+                    ni_unit = make.fcc(a, "ni")  # Try lowercase symbol
+                    st.write(f"Created FCC Ni unit cell: {ni_unit.atoms.schema}")
                 except Exception as e:
-                    st.warning(f"Failed with 'ni': {e}. Trying atomic number 28.")
-                    ni_unit = make.fcc(a, 28)  # Try atomic number for Ni
+                    st.error(f"Failed with 'ni': {e}. Cannot create FCC Ni unit cell.")
+                    raise
 
             # Apply orientation transformation: [11-2], [111], [-110]
             orientation_matrix = np.array([
@@ -199,15 +201,19 @@ if st.button("Generate Structures"):
             feni_super = ni_super.copy()
             num_atoms = len(feni_super.atoms)
             num_sub = int(num_atoms * m / 100)
-            ni_indices = feni_super.atoms.filter(pl.col("element") == "Ni").index
+            ni_indices = feni_super.atoms.filter(pl.col("elem") == 28).index
             if len(ni_indices) < num_sub:
                 raise ValueError(f"Insufficient Ni atoms for Fe substitution. Required: {num_sub}, Available: {len(ni_indices)}")
             sub_indices = random.sample(ni_indices.tolist(), num_sub)
             feni_super.atoms = feni_super.atoms.with_columns(
                 pl.when(pl.col("index").is_in(sub_indices))
+                .then(pl.lit(26))  # Fe atomic number
+                .otherwise(pl.col("elem"))
+                .alias("elem"),
+                pl.when(pl.col("index").is_in(sub_indices))
                 .then(pl.lit("Fe"))
-                .otherwise(pl.col("element"))
-                .alias("element")
+                .otherwise(pl.col("symbol"))
+                .alias("symbol")
             )
             with tempfile.TemporaryDirectory() as td:
                 temp_file = pathlib.Path(td) / "feni_super.xsf"
@@ -227,15 +233,19 @@ if st.button("Generate Structures"):
 
             # Step 4: Substitute Ni → Cr
             crfeni_super = feni_super.copy()
-            ni_indices = crfeni_super.atoms.filter(pl.col("element") == "Ni").index
+            ni_indices = crfeni_super.atoms.filter(pl.col("elem") == 28).index
             if len(ni_indices) < num_sub:
                 raise ValueError(f"Insufficient Ni atoms for Cr substitution. Required: {num_sub}, Available: {len(ni_indices)}")
             sub_indices = random.sample(ni_indices.tolist(), num_sub)
             crfeni_super.atoms = crfeni_super.atoms.with_columns(
                 pl.when(pl.col("index").is_in(sub_indices))
+                .then(pl.lit(24))  # Cr atomic number
+                .otherwise(pl.col("elem"))
+                .alias("elem"),
+                pl.when(pl.col("index").is_in(sub_indices))
                 .then(pl.lit("Cr"))
-                .otherwise(pl.col("element"))
-                .alias("element")
+                .otherwise(pl.col("symbol"))
+                .alias("symbol")
             )
             with tempfile.TemporaryDirectory() as td:
                 temp_file = pathlib.Path(td) / "crfeni_super.xsf"
@@ -255,15 +265,19 @@ if st.button("Generate Structures"):
 
             # Step 5: Substitute Ni → Co
             cocrfeni_super = crfeni_super.copy()
-            ni_indices = cocrfeni_super.atoms.filter(pl.col("element") == "Ni").index
+            ni_indices = cocrfeni_super.atoms.filter(pl.col("elem") == 28).index
             if len(ni_indices) < num_sub:
                 raise ValueError(f"Insufficient Ni atoms for Co substitution. Required: {num_sub}, Available: {len(ni_indices)}")
             sub_indices = random.sample(ni_indices.tolist(), num_sub)
             cocrfeni_super.atoms = cocrfeni_super.atoms.with_columns(
                 pl.when(pl.col("index").is_in(sub_indices))
+                .then(pl.lit(27))  # Co atomic number
+                .otherwise(pl.col("elem"))
+                .alias("elem"),
+                pl.when(pl.col("index").is_in(sub_indices))
                 .then(pl.lit("Co"))
-                .otherwise(pl.col("element"))
-                .alias("element")
+                .otherwise(pl.col("symbol"))
+                .alias("symbol")
             )
             with tempfile.TemporaryDirectory() as td:
                 temp_file = pathlib.Path(td) / "cocrfeni_super.xsf"
@@ -283,16 +297,20 @@ if st.button("Generate Structures"):
 
             # Step 6: Substitute Ni → Al
             al_super = cocrfeni_super.copy()
-            ni_indices = al_super.atoms.filter(pl.col("element") == "Ni").index
+            ni_indices = al_super.atoms.filter(pl.col("elem") == 28).index
             num_al_sub = int(num_atoms * n / 100)
             if len(ni_indices) < num_al_sub:
                 raise ValueError(f"Insufficient Ni atoms for Al substitution. Required: {num_al_sub}, Available: {len(ni_indices)}")
             sub_indices = random.sample(ni_indices.tolist(), num_al_sub)
             al_super.atoms = al_super.atoms.with_columns(
                 pl.when(pl.col("index").is_in(sub_indices))
+                .then(pl.lit(13))  # Al atomic number
+                .otherwise(pl.col("elem"))
+                .alias("elem"),
+                pl.when(pl.col("index").is_in(sub_indices))
                 .then(pl.lit("Al"))
-                .otherwise(pl.col("element"))
-                .alias("element")
+                .otherwise(pl.col("symbol"))
+                .alias("symbol")
             )
             with tempfile.TemporaryDirectory() as td:
                 temp_file = pathlib.Path(td) / "al0p5cocrfeni_super.xsf"
@@ -332,15 +350,13 @@ if st.button("Generate Structures"):
             base_frac = al_super.atoms.select(["x", "y", "z"]).to_numpy()
             mirrored_frac = al_mirror.atoms.select(["x", "y", "z"]).to_numpy()
             mirrored_frac[:, 1] = (mirrored_frac[:, 1] + 0.5) % 1.0  # Shift to top half
-            base_atoms = al_super.atoms.select(["element"])
-            mirrored_atoms = al_mirror.atoms.select(["element"])
+            base_atoms = al_super.atoms.select(["elem", "symbol"])
+            mirrored_atoms = al_mirror.atoms.select(["elem", "symbol"])
             combined_coords = np.vstack([base_frac, mirrored_frac])
-            combined_elements = pl.concat([
-                base_atoms,
-                mirrored_atoms
-            ])
+            combined_elements = pl.concat([base_atoms, mirrored_atoms])
             merged_atoms = pl.DataFrame({
-                "element": combined_elements["element"],
+                "elem": combined_elements["elem"],
+                "symbol": combined_elements["symbol"],
                 "x": combined_coords[:, 0],
                 "y": combined_coords[:, 1],
                 "z": combined_coords[:, 2]
