@@ -9,6 +9,9 @@ import uuid
 import os
 import tempfile
 import pathlib
+import nglview as nv
+from streamlit_nglview import st_nglview
+import py3dmol
 
 # -------------------- Database helpers -------------------- #
 def init_db():
@@ -30,7 +33,7 @@ def get_unique_filename(conn, filename, format):
 
     counter = 1
     while True:
-        c.execute("SELECT filename FROM structures WHERE filename = ?", (proposed_filename,))
+        c.execute("SELECT filename, format FROM structures WHERE filename = ?", (proposed_filename,))
         if not c.fetchone():
             return proposed_filename  # Unique filename found
         proposed_filename = f"{base_name}_{counter}.{ext}"
@@ -96,6 +99,38 @@ def display_download_section():
         conn.close()
     except Exception as e:
         st.sidebar.error(f"Error retrieving files from database: {e}")
+
+def visualize_structure(structure, format="cif"):
+    """
+    Visualize a pymatgen structure using nglview or py3dmol as fallback.
+    """
+    try:
+        # Try nglview first
+        with tempfile.TemporaryDirectory() as td:
+            temp_file = pathlib.Path(td) / f"temp.{format}"
+            if format == "cif":
+                CifWriter(structure).write_file(str(temp_file))
+            elif format == "xsf":
+                with open(temp_file, "w") as f:
+                    f.write(structure.to(fmt="xsf"))
+            view = nv.show_file(str(temp_file))
+            view.add_unitcell()
+            view.add_spacefill(radius_type="vdw", scale=0.3)
+            st_nglview(view, height="500px")
+    except Exception as e:
+        st.warning(f"NGLView failed: {e}. Falling back to Py3DMol.")
+        # Fallback to py3dmol
+        with tempfile.TemporaryDirectory() as td:
+            temp_file = pathlib.Path(td) / "temp.cif"
+            CifWriter(structure).write_file(str(temp_file))
+            with open(temp_file, "r") as f:
+                cif_data = f.read()
+            view = py3dmol.view(width=600, height=400)
+            view.addModel(cif_data, "cif")
+            view.setStyle({"sphere": {"radius": 0.5}})
+            view.addUnitCell()
+            view.zoomTo()
+            st.components.v1.html(view._make_html(), width=600, height=400)
 
 # -------------------- Streamlit UI -------------------- #
 st.title("Crystal Structure Generator (Al0.5CoCrFeNi Nanotwin)")
@@ -204,7 +239,7 @@ if st.button("Generate Structures"):
                 data = p.read_bytes()
                 cfg_file = get_unique_filename(conn, "crfeni_super.cfg", "CFG")
                 save_to_db(conn, cfg_file, "CFG", data)
-                st.success(f"Created {crfeni_super_file}")
+                st.success(f"Created {cfg_file}")
 
             # Step 5: Substitute Ni → Co
             cocrfeni_super = crfeni_super.copy()
@@ -298,6 +333,43 @@ if st.button("Generate Structures"):
             raise
         finally:
             conn.close()
+
+# -------------------- Visualization Section -------------------- #
+st.header("Visualize Structure")
+try:
+    conn = init_db()
+    c = conn.cursor()
+    c.execute("SELECT filename, format, data FROM structures WHERE data IS NOT NULL AND length(data) > 0")
+    files = c.fetchall()
+    conn.close()
+
+    if not files:
+        st.info("No structures available for visualization.")
+    else:
+        file_options = [filename for filename, format, _ in files if format in ["XSF", "CIF"]]
+        selected_file = st.selectbox("Select a structure to visualize", file_options)
+        if selected_file:
+            with st.spinner("Loading visualization..."):
+                # Retrieve the selected file's data
+                conn = init_db()
+                c = conn.cursor()
+                c.execute("SELECT format, data FROM structures WHERE filename = ?", (selected_file,))
+                format, data = c.fetchone()
+                conn.close()
+
+                # Convert data to pymatgen Structure
+                with tempfile.TemporaryDirectory() as td:
+                    temp_file = pathlib.Path(td) / f"temp.{format.lower()}"
+                    with open(temp_file, "wb") as f:
+                        f.write(data)
+                    if format == "CIF":
+                        structure = Structure.from_file(str(temp_file))
+                    elif format == "XSF":
+                        structure = Structure.from_file(str(temp_file))
+                    visualize_structure(structure, format=format.lower())
+
+except Exception as e:
+    st.error(f"Error loading visualization: {e}")
 
 # -------------------- Downloads -------------------- #
 display_download_section()
