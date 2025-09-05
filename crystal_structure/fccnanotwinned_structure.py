@@ -99,7 +99,7 @@ def display_download_section():
 
 def visualize_structure(structure, format="cif"):
     """
-    Visualize a pymatgen Structure object using py3Dmol.
+    Visualize a pymatgen Structure object using py3Dmol with twin plane.
     """
     try:
         with tempfile.TemporaryDirectory() as td:
@@ -116,6 +116,11 @@ def visualize_structure(structure, format="cif"):
                 }
             })
             view.addUnitCell()
+            # Add twin plane (approximate Y=0.5 plane in fractional coords)
+            lattice = structure.lattice
+            y_mid = lattice.b / 2  # Midpoint of Y lattice vector
+            view.addSurface("VDW", {"color": "yellow", "opacity": 0.3}, 
+                           {"vertex": [[0, y_mid, 0], [lattice.a, y_mid, 0], [lattice.a, y_mid, lattice.c], [0, y_mid, lattice.c]]})
             view.zoomTo()
             st.components.v1.html(view._make_html(), width=600, height=400)
     except Exception as e:
@@ -296,11 +301,14 @@ if st.button("Generate Structures"):
 
             # Step 7: Mirror across Y=0 with wrapping
             al_mirror = al_super.copy()
-            frac_coords = al_mirror.frac_coords
+            frac_coords = al_mirror.frac_coords.copy()  # Copy to ensure writable
             frac_coords[:, 1] = (-frac_coords[:, 1]) % 1.0  # Mirror across Y=0 and wrap
             al_mirror = Structure(al_mirror.lattice, al_mirror.species, frac_coords, coords_are_cartesian=False)
             atom_counts = Counter(str(s) for s in al_mirror.species)
             st.write(f"Mirrored structure atom counts: {atom_counts['Ni']} Ni, {atom_counts['Fe']} Fe, {atom_counts['Cr']} Cr, {atom_counts['Co']} Co, {atom_counts['Al']} Al (Total: {len(al_mirror)} atoms)")
+            # Validate twin plane alignment
+            y_coords = al_mirror.frac_coords[:, 1]
+            st.write(f"Y fractional coordinates range: min={y_coords.min():.3f}, max={y_coords.max():.3f}")
             with tempfile.TemporaryDirectory() as td:
                 temp_file = pathlib.Path(td) / "al0p5cocrfeni_mirror.cif"
                 al_mirror.to(filename=temp_file, fmt="cif")
@@ -308,6 +316,13 @@ if st.button("Generate Structures"):
                 mirror_file = get_unique_filename(conn, "al0p5cocrfeni_mirror.cif", "CIF")
                 save_to_db(conn, mirror_file, "CIF", data)
                 st.success(f"Created {mirror_file}")
+
+                temp_file = pathlib.Path(td) / "al0p5cocrfeni_mirror.xsf"
+                al_mirror.to(filename=temp_file, fmt="xsf")
+                data = temp_file.read_bytes()
+                cfg_file = get_unique_filename(conn, "al0p5cocrfeni_mirror.xsf", "XSF")
+                save_to_db(conn, cfg_file, "XSF", data)
+                st.success(f"Created {cfg_file}")
 
             # Step 8: Merge original and mirrored structures along Y
             cell_mat = al_super.lattice.matrix.copy()  # Copy to avoid read-only error
@@ -321,6 +336,9 @@ if st.button("Generate Structures"):
             merged_structure = Structure(super_lattice, combined_species, combined_coords, coords_are_cartesian=False)
             atom_counts = Counter(str(s) for s in merged_structure.species)
             st.write(f"Nanotwin atom counts: {atom_counts['Ni']} Ni, {atom_counts['Fe']} Fe, {atom_counts['Cr']} Cr, {atom_counts['Co']} Co, {atom_counts['Al']} Al (Total: {len(merged_structure)} atoms)")
+            # Validate nanotwin Y coordinates
+            y_coords = merged_structure.frac_coords[:, 1]
+            st.write(f"Nanotwin Y fractional coordinates range: min={y_coords.min():.3f}, max={y_coords.max():.3f}")
             with tempfile.TemporaryDirectory() as td:
                 temp_file = pathlib.Path(td) / "al0p5cocrfeni_nanotwin.cif"
                 merged_structure.to(filename=temp_file, fmt="cif")
