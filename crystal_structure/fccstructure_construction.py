@@ -100,7 +100,7 @@ def display_download_section():
 
 def visualize_structure(structure, format="cif"):
     """
-    Visualize a pymatgen structure using py3dmol.
+    Visualize a pymatgen structure using py3Dmol.
     """
     try:
         with tempfile.TemporaryDirectory() as td:
@@ -112,7 +112,7 @@ def visualize_structure(structure, format="cif"):
                     f.write(structure.to(fmt="xsf"))
             with open(temp_file, "r") as f:
                 data = f.read()
-            view = py3dmol.view(width=600, height=400)
+            view = py3Dmol.view(width=600, height=400)
             view.addModel(data, format)
             view.setStyle({"sphere": {"radius": 0.5}})
             view.addUnitCell()
