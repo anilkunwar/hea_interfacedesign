@@ -109,7 +109,7 @@ clean_database(conn)
 if st.button("Clear Database"):
     clear_database(conn)
     conn.close()
-    st.experimental_rerun()
+    st.rerun()  # Updated from st.experimental_rerun()
 
 a = st.number_input("Lattice constant (Å)", value=3.54, min_value=0.1, format="%.2f")
 m = st.number_input("Major element substitution percentage (%)", value=22.22, min_value=0.0, max_value=100.0, format="%.2f")
@@ -173,7 +173,7 @@ if st.button("Generate Structures"):
             xsf_str = cocrfeni_super.to(fmt="xsf").encode()
             cocrfeni_super_file = get_unique_filename(conn, "cocrfeni_super.xsf", "XSF")
             save_to_db(conn, cocrfeni_super_file, "XSF", xsf_str)
-            st.success(f" создано {cocrfeni_super_file}")
+            st.success(f"Created {cocrfeni_super_file}")
 
             # Step 6: Substitute Ni → Al
             al_super = cocrfeni_super.copy()
