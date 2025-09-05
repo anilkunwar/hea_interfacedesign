@@ -22,29 +22,20 @@ def init_db():
 
 def get_unique_filename(conn, filename, format):
     """
-    Ensure unique filename in DB. If conflict, prompt user with a text_input until a unique name is provided.
+    Ensure unique filename in DB by auto-incrementing (_1, _2, ...).
     """
     base_name = os.path.splitext(filename)[0]
+    ext = format.lower()
+    proposed_filename = f"{base_name}.{ext}"
     c = conn.cursor()
-    proposed_filename = f"{base_name}.{format.lower()}"
-    c.execute("SELECT filename FROM structures WHERE filename = ?", (proposed_filename,))
-    
-    if c.fetchone():
-        st.warning(f"File '{proposed_filename}' already exists.")
-        iteration = 0
-        while True:
-            new_name = st.text_input(
-                f"Enter a new name for {base_name} (without extension):",
-                f"{base_name}_new_{iteration}",
-                key=f"rename_{base_name}_{format}_{iteration}"  # Unique key to avoid duplicate ID error
-            )
-            proposed_filename = f"{new_name}.{format.lower()}"
-            c.execute("SELECT filename FROM structures WHERE filename = ?", (proposed_filename,))
-            if not c.fetchone():
-                return proposed_filename
-            st.error(f"Filename '{proposed_filename}' already exists. Please choose a different name.")
-            iteration += 1
-    return proposed_filename
+
+    counter = 1
+    while True:
+        c.execute("SELECT filename FROM structures WHERE filename = ?", (proposed_filename,))
+        if not c.fetchone():
+            return proposed_filename  # ✅ unique
+        proposed_filename = f"{base_name}_{counter}.{ext}"
+        counter += 1
 
 def save_to_db(conn, filename, format, data):
     try:
@@ -54,7 +45,7 @@ def save_to_db(conn, filename, format, data):
                   (file_id, filename, format, data))
         conn.commit()
     except sqlite3.IntegrityError as e:
-        st.error(f"Database error: {e}. Try a different filename.")
+        st.error(f"Database error: {e}")
         raise
     except Exception as e:
         st.error(f"Error saving to database: {e}")
@@ -128,7 +119,7 @@ if st.button("Generate Structures"):
             num_sub = int(num_atoms * m / 100)
             ni_indices = [i for i, s in enumerate(feni_super) if s.species_string == "Ni"]
             if len(ni_indices) < num_sub:
-                raise ValueError(f"Insufficient Ni atoms for Fe substitution. Required: {num_sub}, Available: {len(ni_indices)}")
+                raise ValueError("Insufficient Ni atoms for Fe substitution")
             for idx in random.sample(ni_indices, num_sub):
                 feni_super[idx] = "Fe"
             feni_super_file = get_unique_filename(conn, "feni_super.xsf", "XSF")
@@ -139,7 +130,7 @@ if st.button("Generate Structures"):
             crfeni_super = feni_super.copy()
             ni_indices = [i for i, s in enumerate(crfeni_super) if s.species_string == "Ni"]
             if len(ni_indices) < num_sub:
-                raise ValueError(f"Insufficient Ni atoms for Cr substitution. Required: {num_sub}, Available: {len(ni_indices)}")
+                raise ValueError("Insufficient Ni atoms for Cr substitution")
             for idx in random.sample(ni_indices, num_sub):
                 crfeni_super[idx] = "Cr"
             crfeni_super_file = get_unique_filename(conn, "crfeni_super.xsf", "XSF")
@@ -150,7 +141,7 @@ if st.button("Generate Structures"):
             cocrfeni_super = crfeni_super.copy()
             ni_indices = [i for i, s in enumerate(cocrfeni_super) if s.species_string == "Ni"]
             if len(ni_indices) < num_sub:
-                raise ValueError(f"Insufficient Ni atoms for Co substitution. Required: {num_sub}, Available: {len(ni_indices)}")
+                raise ValueError("Insufficient Ni atoms for Co substitution")
             for idx in random.sample(ni_indices, num_sub):
                 cocrfeni_super[idx] = "Co"
             cocrfeni_super_file = get_unique_filename(conn, "cocrfeni_super.xsf", "XSF")
@@ -162,19 +153,17 @@ if st.button("Generate Structures"):
             ni_indices = [i for i, s in enumerate(al_super) if s.species_string == "Ni"]
             num_al_sub = int(num_atoms * n / 100)
             if len(ni_indices) < num_al_sub:
-                raise ValueError(f"Insufficient Ni atoms for Al substitution. Required: {num_al_sub}, Available: {len(ni_indices)}")
+                raise ValueError("Insufficient Ni atoms for Al substitution")
             for idx in random.sample(ni_indices, num_al_sub):
                 al_super[idx] = "Al"
             al_super_file = get_unique_filename(conn, "al0p5cocrfeni_super.xsf", "XSF")
             save_to_db(conn, al_super_file, "XSF", al_super.to(fmt="xsf").encode())
             st.success(f"Created {al_super_file}")
 
-            # Step 7: Mirror along Y
+            # Step 7–8: Nanotwin
             base_frac = al_super.frac_coords.copy()
             mirrored_frac = base_frac.copy()
             mirrored_frac[:, 1] = (-mirrored_frac[:, 1]) % 1.0
-
-            # Step 8: Merge into nanotwin (double Y)
             super_lat = (al_super * (1, 2, 1)).lattice
             top_frac = mirrored_frac.copy()
             top_frac[:, 1] = (top_frac[:, 1] + 0.5) % 1.0
@@ -205,8 +194,6 @@ if st.button("Generate Structures"):
         except Exception as e:
             st.error(f"Error during structure generation: {e}")
             raise
-        finally:
-            conn.close()
 
 # -------------------- Downloads -------------------- #
 display_download_section()
