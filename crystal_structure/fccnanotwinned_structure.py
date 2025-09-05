@@ -2,6 +2,7 @@ import streamlit as st
 import sqlite3
 import numpy as np
 from pymatgen.core import Lattice, Structure
+from collections import Counter
 import random
 import uuid
 import os
@@ -173,7 +174,8 @@ if st.button("Generate Structures"):
 
             # Step 2: Supercell
             ni_super = ni_unit * (nx, ny, nz)
-            st.write(f"Supercell atom counts: {ni_super.get_chemical_symbols().count('Ni')} Ni")
+            atom_counts = Counter(str(s) for s in ni_super.species)
+            st.write(f"Supercell atom counts: {atom_counts['Ni']} Ni (Total: {len(ni_super)} atoms)")
             with tempfile.TemporaryDirectory() as td:
                 temp_file = pathlib.Path(td) / "ni_super.cif"
                 ni_super.to(filename=temp_file, fmt="cif")
@@ -199,7 +201,8 @@ if st.button("Generate Structures"):
             sub_indices = random.sample(ni_indices, num_sub)
             for idx in sub_indices:
                 feni_super[idx] = "Fe"
-            st.write(f"Fe substitution atom counts: {feni_super.get_chemical_symbols().count('Ni')} Ni, {feni_super.get_chemical_symbols().count('Fe')} Fe")
+            atom_counts = Counter(str(s) for s in feni_super.species)
+            st.write(f"Fe substitution atom counts: {atom_counts['Ni']} Ni, {atom_counts['Fe']} Fe (Total: {len(feni_super)} atoms)")
             with tempfile.TemporaryDirectory() as td:
                 temp_file = pathlib.Path(td) / "feni_super.cif"
                 feni_super.to(filename=temp_file, fmt="cif")
@@ -223,7 +226,8 @@ if st.button("Generate Structures"):
             sub_indices = random.sample(ni_indices, num_sub)
             for idx in sub_indices:
                 crfeni_super[idx] = "Cr"
-            st.write(f"Cr substitution atom counts: {crfeni_super.get_chemical_symbols().count('Ni')} Ni, {crfeni_super.get_chemical_symbols().count('Fe')} Fe, {crfeni_super.get_chemical_symbols().count('Cr')} Cr")
+            atom_counts = Counter(str(s) for s in crfeni_super.species)
+            st.write(f"Cr substitution atom counts: {atom_counts['Ni']} Ni, {atom_counts['Fe']} Fe, {atom_counts['Cr']} Cr (Total: {len(crfeni_super)} atoms)")
             with tempfile.TemporaryDirectory() as td:
                 temp_file = pathlib.Path(td) / "crfeni_super.cif"
                 crfeni_super.to(filename=temp_file, fmt="cif")
@@ -247,7 +251,8 @@ if st.button("Generate Structures"):
             sub_indices = random.sample(ni_indices, num_sub)
             for idx in sub_indices:
                 cocrfeni_super[idx] = "Co"
-            st.write(f"Co substitution atom counts: {cocrfeni_super.get_chemical_symbols().count('Ni')} Ni, {cocrfeni_super.get_chemical_symbols().count('Fe')} Fe, {cocrfeni_super.get_chemical_symbols().count('Cr')} Cr, {cocrfeni_super.get_chemical_symbols().count('Co')} Co")
+            atom_counts = Counter(str(s) for s in cocrfeni_super.species)
+            st.write(f"Co substitution atom counts: {atom_counts['Ni']} Ni, {atom_counts['Fe']} Fe, {atom_counts['Cr']} Cr, {atom_counts['Co']} Co (Total: {len(cocrfeni_super)} atoms)")
             with tempfile.TemporaryDirectory() as td:
                 temp_file = pathlib.Path(td) / "cocrfeni_super.cif"
                 cocrfeni_super.to(filename=temp_file, fmt="cif")
@@ -272,7 +277,8 @@ if st.button("Generate Structures"):
             sub_indices = random.sample(ni_indices, num_al_sub)
             for idx in sub_indices:
                 al_super[idx] = "Al"
-            st.write(f"Al substitution atom counts: {al_super.get_chemical_symbols().count('Ni')} Ni, {al_super.get_chemical_symbols().count('Fe')} Fe, {al_super.get_chemical_symbols().count('Cr')} Cr, {al_super.get_chemical_symbols().count('Co')} Co, {al_super.get_chemical_symbols().count('Al')} Al")
+            atom_counts = Counter(str(s) for s in al_super.species)
+            st.write(f"Al substitution atom counts: {atom_counts['Ni']} Ni, {atom_counts['Fe']} Fe, {atom_counts['Cr']} Cr, {atom_counts['Co']} Co, {atom_counts['Al']} Al (Total: {len(al_super)} atoms)")
             with tempfile.TemporaryDirectory() as td:
                 temp_file = pathlib.Path(td) / "al0p5cocrfeni_super.cif"
                 al_super.to(filename=temp_file, fmt="cif")
@@ -293,6 +299,8 @@ if st.button("Generate Structures"):
             frac_coords = al_mirror.frac_coords
             frac_coords[:, 1] = (-frac_coords[:, 1]) % 1.0  # Mirror across Y=0 and wrap
             al_mirror = Structure(al_mirror.lattice, al_mirror.species, frac_coords, coords_are_cartesian=False)
+            atom_counts = Counter(str(s) for s in al_mirror.species)
+            st.write(f"Mirrored structure atom counts: {atom_counts['Ni']} Ni, {atom_counts['Fe']} Fe, {atom_counts['Cr']} Cr, {atom_counts['Co']} Co, {atom_counts['Al']} Al (Total: {len(al_mirror)} atoms)")
             with tempfile.TemporaryDirectory() as td:
                 temp_file = pathlib.Path(td) / "al0p5cocrfeni_mirror.cif"
                 al_mirror.to(filename=temp_file, fmt="cif")
@@ -311,7 +319,8 @@ if st.button("Generate Structures"):
             combined_coords = np.vstack([base_frac, mirrored_frac])
             combined_species = al_super.species + al_mirror.species
             merged_structure = Structure(super_lattice, combined_species, combined_coords, coords_are_cartesian=False)
-            st.write(f"Nanotwin atom counts: {merged_structure.get_chemical_symbols().count('Ni')} Ni, {merged_structure.get_chemical_symbols().count('Fe')} Fe, {merged_structure.get_chemical_symbols().count('Cr')} Cr, {merged_structure.get_chemical_symbols().count('Co')} Co, {merged_structure.get_chemical_symbols().count('Al')} Al")
+            atom_counts = Counter(str(s) for s in merged_structure.species)
+            st.write(f"Nanotwin atom counts: {atom_counts['Ni']} Ni, {atom_counts['Fe']} Fe, {atom_counts['Cr']} Cr, {atom_counts['Co']} Co, {atom_counts['Al']} Al (Total: {len(merged_structure)} atoms)")
             with tempfile.TemporaryDirectory() as td:
                 temp_file = pathlib.Path(td) / "al0p5cocrfeni_nanotwin.cif"
                 merged_structure.to(filename=temp_file, fmt="cif")
