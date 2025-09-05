@@ -8,6 +8,8 @@ from pymatgen.io.lammps.data import LammpsData
 import random
 import uuid
 import os
+import tempfile
+import pathlib
 
 # Initialize SQLite database
 def init_db():
@@ -89,18 +91,16 @@ if st.button("Generate Structures"):
             ni_unit = ni_unit.get_reduced_structure()
             ni_unit_file = "ni_unit.xsf"
             ni_unit_file = get_unique_filename(conn, ni_unit_file, "XSF")
-            ni_unit_buffer = io.StringIO()
-            ni_unit.to(filename=ni_unit_buffer, fmt="xsf")
-            save_to_db(conn, ni_unit_file, "XSF", ni_unit_buffer.getvalue().encode())
+            xsf_str = ni_unit.to(fmt="xsf")
+            save_to_db(conn, ni_unit_file, "XSF", xsf_str.encode())
             st.success(f"Created {ni_unit_file}")
 
             # Step 2: Duplicate to supercell
             ni_super = ni_unit * (nx, ny, nz)
             ni_super_file = "ni_super.xsf"
             ni_super_file = get_unique_filename(conn, ni_super_file, "XSF")
-            ni_super_buffer = io.StringIO()
-            ni_super.to(filename=ni_super_buffer, fmt="xsf")
-            save_to_db(conn, ni_super_file, "XSF", ni_super_buffer.getvalue().encode())
+            xsf_str = ni_super.to(fmt="xsf")
+            save_to_db(conn, ni_super_file, "XSF", xsf_str.encode())
             st.success(f"Created {ni_super_file}")
 
             # Step 3: Substitute Ni with Fe
@@ -116,9 +116,8 @@ if st.button("Generate Structures"):
                 feni_super[idx] = "Fe"
             feni_super_file = "feni_super.xsf"
             feni_super_file = get_unique_filename(conn, feni_super_file, "XSF")
-            feni_super_buffer = io.StringIO()
-            feni_super.to(filename=feni_super_buffer, fmt="xsf")
-            save_to_db(conn, feni_super_file, "XSF", feni_super_buffer.getvalue().encode())
+            xsf_str = feni_super.to(fmt="xsf")
+            save_to_db(conn, feni_super_file, "XSF", xsf_str.encode())
             st.success(f"Created {feni_super_file}")
 
             # Step 4: Substitute Ni with Cr
@@ -132,9 +131,8 @@ if st.button("Generate Structures"):
                 crfeni_super[idx] = "Cr"
             crfeni_super_file = "crfeni_super.xsf"
             crfeni_super_file = get_unique_filename(conn, crfeni_super_file, "XSF")
-            crfeni_super_buffer = io.StringIO()
-            crfeni_super.to(filename=crfeni_super_buffer, fmt="xsf")
-            save_to_db(conn, crfeni_super_file, "XSF", crfeni_super_buffer.getvalue().encode())
+            xsf_str = crfeni_super.to(fmt="xsf")
+            save_to_db(conn, crfeni_super_file, "XSF", xsf_str.encode())
             st.success(f"Created {crfeni_super_file}")
 
             # Step 5: Substitute Ni with Co
@@ -148,9 +146,8 @@ if st.button("Generate Structures"):
                 cocrfeni_super[idx] = "Co"
             cocrfeni_super_file = "cocrfeni_super.xsf"
             cocrfeni_super_file = get_unique_filename(conn, cocrfeni_super_file, "XSF")
-            cocrfeni_super_buffer = io.StringIO()
-            cocrfeni_super.to(filename=cocrfeni_super_buffer, fmt="xsf")
-            save_to_db(conn, cocrfeni_super_file, "XSF", cocrfeni_super_buffer.getvalue().encode())
+            xsf_str = cocrfeni_super.to(fmt="xsf")
+            save_to_db(conn, cocrfeni_super_file, "XSF", xsf_str.encode())
             st.success(f"Created {cocrfeni_super_file}")
 
             # Step 6: Substitute Ni with Al
@@ -165,51 +162,43 @@ if st.button("Generate Structures"):
                 al0p5cocrfeni_super[idx] = "Al"
             al0p5cocrfeni_super_file = "al0p5cocrfeni_super.xsf"
             al0p5cocrfeni_super_file = get_unique_filename(conn, al0p5cocrfeni_super_file, "XSF")
-            al0p5cocrfeni_super_buffer = io.StringIO()
-            al0p5cocrfeni_super.to(filename=al0p5cocrfeni_super_buffer, fmt="xsf")
-            save_to_db(conn, al0p5cocrfeni_super_file, "XSF", al0p5cocrfeni_super_buffer.getvalue().encode())
+            xsf_str = al0p5cocrfeni_super.to(fmt="xsf")
+            save_to_db(conn, al0p5cocrfeni_super_file, "XSF", xsf_str.encode())
             st.success(f"Created {al0p5cocrfeni_super_file}")
 
-            # Step 7: Mirror along Y
-            mirrored_structure = al0p5cocrfeni_super.copy()
-            mirrored_coords = mirrored_structure.frac_coords.copy()
-            mirrored_coords[:, 1] = -mirrored_coords[:, 1]  # Reflect across Y=0
-            mirrored_structure = Structure(mirrored_structure.lattice, mirrored_structure.species, mirrored_coords, coords_are_cartesian=False)
-            al0p5cocrfeni_mirror_file = "al0p5cocrfeni_mirror.xsf"
-            al0p5cocrfeni_mirror_file = get_unique_filename(conn, al0p5cocrfeni_mirror_file, "XSF")
-            al0p5cocrfeni_mirror_buffer = io.StringIO()
-            mirrored_structure.to(filename=al0p5cocrfeni_mirror_buffer, fmt="xsf")
-            save_to_db(conn, al0p5cocrfeni_mirror_file, "XSF", al0p5cocrfeni_mirror_buffer.getvalue().encode())
-            st.success(f"Created {al0p5cocrfeni_mirror_file}")
+            # Step 7: Mirror along Y (fractional coords)
+            base = al0p5cocrfeni_super  # Rename for clarity
+            base_frac = base.frac_coords.copy()
+            mirrored_frac = base_frac.copy()
+            mirrored_frac[:, 1] = (-mirrored_frac[:, 1]) % 1.0  # Mirror across y=0, wrap to [0,1)
 
-            # Step 8: Merge structures
-            # Approximate by creating a supercell doubled in Y direction
-            merged_structure = al0p5cocrfeni_super.copy()
-            merged_structure = merged_structure * (1, 2, 1)  # Double in Y direction
-            num_atoms = len(al0p5cocrfeni_super)
-            for i in range(num_atoms):
-                merged_structure[num_atoms + i] = mirrored_structure[i]
+            # Step 8: Merge into a nanotwin with doubled Y lattice
+            super_lat = (base * (1, 2, 1)).lattice  # Doubled-Y lattice
+            top_frac = mirrored_frac.copy()
+            top_frac[:, 1] = (top_frac[:, 1] + 0.5) % 1.0  # Shift mirrored half to top
+            species_combined = list(base.species) + list(base.species)
+            coords_combined = np.vstack([base_frac, top_frac])
+            merged_structure = Structure(super_lat, species_combined, coords_combined, coords_are_cartesian=False)
             al0p5cocrfeni_nanotwin_file = "al0p5cocrfeni_nanotwin.xsf"
             al0p5cocrfeni_nanotwin_file = get_unique_filename(conn, al0p5cocrfeni_nanotwin_file, "XSF")
-            al0p5cocrfeni_nanotwin_buffer = io.StringIO()
-            merged_structure.to(filename=al0p5cocrfeni_nanotwin_buffer, fmt="xsf")
-            save_to_db(conn, al0p5cocrfeni_nanotwin_file, "XSF", al0p5cocrfeni_nanotwin_buffer.getvalue().encode())
+            xsf_str = merged_structure.to(fmt="xsf")
+            save_to_db(conn, al0p5cocrfeni_nanotwin_file, "XSF", xsf_str.encode())
             st.success(f"Created {al0p5cocrfeni_nanotwin_file}")
 
             # Save CFG and CIF versions of final structure
-            cfg_buffer = io.StringIO()
-            LammpsData.from_structure(merged_structure).to_file(filename=cfg_buffer, style="atomic")
-            cfg_file = "al0p5cocrfeni_nanotwin.cfg"
-            cfg_file = get_unique_filename(conn, cfg_file, "CFG")
-            save_to_db(conn, cfg_file, "CFG", cfg_buffer.getvalue().encode())
-            st.success(f"Created {cfg_file}")
+            with tempfile.TemporaryDirectory() as td:
+                p = pathlib.Path(td) / "tmp.data"
+                LammpsData.from_structure(merged_structure).write_file(str(p))
+                cfg_file = get_unique_filename(conn, "al0p5cocrfeni_nanotwin.cfg", "CFG")
+                save_to_db(conn, cfg_file, "CFG", p.read_bytes())
+                st.success(f"Created {cfg_file}")
 
-            cif_buffer = io.StringIO()
-            CifWriter(merged_structure).write_file(cif_buffer)
-            cif_file = "al0p5cocrfeni_nanotwin.cif"
-            cif_file = get_unique_filename(conn, cif_file, "CIF")
-            save_to_db(conn, cif_file, "CIF", cif_buffer.getvalue().encode())
-            st.success(f"Created {cif_file}")
+            with tempfile.TemporaryDirectory() as td:
+                p = pathlib.Path(td) / "tmp.cif"
+                CifWriter(merged_structure).write_file(str(p))
+                cif_file = get_unique_filename(conn, "al0p5cocrfeni_nanotwin.cif", "CIF")
+                save_to_db(conn, cif_file, "CIF", p.read_bytes())
+                st.success(f"Created {cif_file}")
 
         except Exception as e:
             st.error(f"Error during structure generation: {e}")
