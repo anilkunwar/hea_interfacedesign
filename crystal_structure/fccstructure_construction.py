@@ -7,6 +7,7 @@ from pymatgen.io.cif import CifWriter
 from pymatgen.io.lammps.data import LammpsData
 import random
 import uuid
+import os
 
 # Initialize SQLite database
 def init_db():
@@ -19,21 +20,30 @@ def init_db():
 
 # Check if filename exists in database and prompt for new name
 def get_unique_filename(conn, filename, format):
+    # Remove any existing extension to avoid duplication
+    base_name = os.path.splitext(filename)[0]
     c = conn.cursor()
-    c.execute("SELECT filename FROM structures WHERE filename = ?", (filename,))
+    c.execute("SELECT filename FROM structures WHERE filename = ?", (f"{base_name}.{format.lower()}",))
     if c.fetchone():
-        st.warning(f"File '{filename}' already exists.")
-        new_name = st.text_input(f"Enter a new name for {filename} (without extension):", filename)
+        st.warning(f"File '{base_name}.{format.lower()}' already exists.")
+        new_name = st.text_input(f"Enter a new name for {base_name} (without extension):", base_name)
         return f"{new_name}.{format.lower()}"
-    return filename
+    return f"{base_name}.{format.lower()}"
 
 # Save file to SQLite
 def save_to_db(conn, filename, format, data):
-    c = conn.cursor()
-    file_id = str(uuid.uuid4())
-    c.execute("INSERT INTO structures (id, filename, format, data) VALUES (?, ?, ?, ?)",
-              (file_id, filename, format, data))
-    conn.commit()
+    try:
+        c = conn.cursor()
+        file_id = str(uuid.uuid4())
+        c.execute("INSERT INTO structures (id, filename, format, data) VALUES (?, ?, ?, ?)",
+                  (file_id, filename, format, data))
+        conn.commit()
+    except sqlite3.IntegrityError as e:
+        st.error(f"Database error: {e}. Try a different filename.")
+        raise
+    except Exception as e:
+        st.error(f"Error saving to database: {e}")
+        raise
 
 # Streamlit app
 st.title("Crystal Structure Generator (Al0.5CoCrFeNi Nanotwin)")
@@ -50,134 +60,155 @@ conn = init_db()
 # Generate structures
 if st.button("Generate Structures"):
     with st.spinner("Generating structures..."):
-        # Step 1: Create FCC Ni unit cell
-        lattice = Lattice.cubic(a)
-        coords = [[0, 0, 0], [0.5, 0.5, 0], [0.5, 0, 0.5], [0, 0.5, 0.5]]
-        ni_unit = Structure(lattice, ["Ni"] * 4, coords)
-        # Reorient to [11-2], [111], [-110]
-        ni_unit = ni_unit.get_reduced_structure()
-        ni_unit_file = "ni_unit.xsf"
-        ni_unit_file = get_unique_filename(conn, ni_unit_file, "xsf")
-        ni_unit_buffer = io.StringIO()
-        ni_unit.to(filename=ni_unit_buffer, fmt="xsf")
-        save_to_db(conn, ni_unit_file, "XSF", ni_unit_buffer.getvalue().encode())
-        st.success(f"Created {ni_unit_file}")
+        try:
+            # Step 1: Create FCC Ni unit cell
+            lattice = Lattice.cubic(a)
+            coords = [[0, 0, 0], [0.5, 0.5, 0], [0.5, 0, 0.5], [0, 0.5, 0.5]]
+            ni_unit = Structure(lattice, ["Ni"] * 4, coords)
+            # Reorient to [11-2], [111], [-110] (simplified)
+            ni_unit = ni_unit.get_reduced_structure()
+            ni_unit_file = "ni_unit.xsf"
+            ni_unit_file = get_unique_filename(conn, ni_unit_file, "XSF")
+            ni_unit_buffer = io.StringIO()
+            ni_unit.to(filename=ni_unit_buffer, fmt="xsf")
+            save_to_db(conn, ni_unit_file, "XSF", ni_unit_buffer.getvalue().encode())
+            st.success(f"Created {ni_unit_file}")
 
-        # Step 2: Duplicate to supercell
-        ni_super = ni_unit * (nx, ny, nz)
-        ni_super_file = "ni_super.xsf"
-        ni_super_file = get_unique_filename(conn, ni_super_file, "xsf")
-        ni_super_buffer = io.StringIO()
-        ni_super.to(filename=ni_super_buffer, fmt="xsf")
-        save_to_db(conn, ni_super_file, "XSF", ni_super_buffer.getvalue().encode())
-        st.success(f"Created {ni_super_file}")
+            # Step 2: Duplicate to supercell
+            ni_super = ni_unit * (nx, ny, nz)
+            ni_super_file = "ni_super.xsf"
+            ni_super_file = get_unique_filename(conn, ni_super_file, "XSF")
+            ni_super_buffer = io.StringIO()
+            ni_super.to(filename=ni_super_buffer, fmt="xsf")
+            save_to_db(conn, ni_super_file, "XSF", ni_super_buffer.getvalue().encode())
+            st.success(f"Created {ni_super_file}")
 
-        # Step 3: Substitute Ni with Fe
-        feni_super = ni_super.copy()
-        num_atoms = len(feni_super)
-        num_sub = int(num_atoms * m / 100)
-        ni_indices = [i for i, site in enumerate(feni_super) if site.species_string == "Ni"]
-        fe_indices = random.sample(ni_indices, num_sub)
-        for idx in fe_indices:
-            feni_super[idx] = "Fe"
-        feni_super_file = "feni_super.xsf"
-        feni_super_file = get_unique_filename(conn, feni_super_file, "xsf")
-        feni_super_buffer = io.StringIO()
-        feni_super.to(filename=feni_super_buffer, fmt="xsf")
-        save_to_db(conn, feni_super_file, "XSF", feni_super_buffer.getvalue().encode())
-        st.success(f"Created {feni_super_file}")
+            # Step 3: Substitute Ni with Fe
+            feni_super = ni_super.copy()
+            num_atoms = len(feni_super)
+            num_sub = int(num_atoms * m / 100)
+            ni_indices = [i for i, site in enumerate(feni_super) if site.species_string == "Ni"]
+            if len(ni_indices) < num_sub:
+                st.error(f"Not enough Ni atoms for Fe substitution. Required: {num_sub}, Available: {len(ni_indices)}")
+                raise ValueError("Insufficient Ni atoms for substitution")
+            fe_indices = random.sample(ni_indices, num_sub)
+            for idx in fe_indices:
+                feni_super[idx] = "Fe"
+            feni_super_file = "feni_super.xsf"
+            feni_super_file = get_unique_filename(conn, feni_super_file, "XSF")
+            feni_super_buffer = io.StringIO()
+            feni_super.to(filename=feni_super_buffer, fmt="xsf")
+            save_to_db(conn, feni_super_file, "XSF", feni_super_buffer.getvalue().encode())
+            st.success(f"Created {feni_super_file}")
 
-        # Step 4: Substitute Ni with Cr
-        crfeni_super = feni_super.copy()
-        ni_indices = [i for i, site in enumerate(crfeni_super) if site.species_string == "Ni"]
-        cr_indices = random.sample(ni_indices, num_sub)
-        for idx in cr_indices:
-            crfeni_super[idx] = "Cr"
-        crfeni_super_file = "crfeni_super.xsf"
-        crfeni_super_file = get_unique_filename(conn, crfeni_super_file, "xsf")
-        crfeni_super_buffer = io.StringIO()
-        crfeni_super.to(filename=crfeni_super_buffer, fmt="xsf")
-        save_to_db(conn, crfeni_super_file, "XSF", crfeni_super_buffer.getvalue().encode())
-        st.success(f"Created {crfeni_super_file}")
+            # Step 4: Substitute Ni with Cr
+            crfeni_super = feni_super.copy()
+            ni_indices = [i for i, site in enumerate(crfeni_super) if site.species_string == "Ni"]
+            if len(ni_indices) < num_sub:
+                st.error(f"Not enough Ni atoms for Cr substitution. Required: {num_sub}, Available: {len(ni_indices)}")
+                raise ValueError("Insufficient Ni atoms for substitution")
+            cr_indices = random.sample(ni_indices, num_sub)
+            for idx in cr_indices:
+                crfeni_super[idx] = "Cr"
+            crfeni_super_file = "crfeni_super.xsf"
+            crfeni_super_file = get_unique_filename(conn, crfeni_super_file, "XSF")
+            crfeni_super_buffer = io.StringIO()
+            crfeni_super.to(filename=crfeni_super_buffer, fmt="xsf")
+            save_to_db(conn, crfeni_super_file, "XSF", crfeni_super_buffer.getvalue().encode())
+            st.success(f"Created {crfeni_super_file}")
 
-        # Step 5: Substitute Ni with Co
-        cocrfeni_super = crfeni_super.copy()
-        ni_indices = [i for i, site in enumerate(cocrfeni_super) if site.species_string == "Ni"]
-        co_indices = random.sample(ni_indices, num_sub)
-        for idx in co_indices:
-            cocrfeni_super[idx] = "Co"
-        cocrfeni_super_file = "cocrfeni_super.xsf"
-        cocrfeni_super_file = get_unique_filename(conn, cocrfeni_super_file, "xsf")
-        cocrfeni_super_buffer = io.StringIO()
-        cocrfeni_super.to(filename=cocrfeni_super_buffer, fmt="xsf")
-        save_to_db(conn, cocrfeni_super_file, "XSF", cocrfeni_super_buffer.getvalue().encode())
-        st.success(f"Created {cocrfeni_super_file}")
+            # Step 5: Substitute Ni with Co
+            cocrfeni_super = crfeni_super.copy()
+            ni_indices = [i for i, site in enumerate(cocrfeni_super) if site.species_string == "Ni"]
+            if len(ni_indices) < num_sub:
+                st.error(f"Not enough Ni atoms for Co substitution. Required: {num_sub}, Available: {len(ni_indices)}")
+                raise ValueError("Insufficient Ni atoms for substitution")
+            co_indices = random.sample(ni_indices, num_sub)
+            for idx in co_indices:
+                cocrfeni_super[idx] = "Co"
+            cocrfeni_super_file = "cocrfeni_super.xsf"
+            cocrfeni_super_file = get_unique_filename(conn, cocrfeni_super_file, "XSF")
+            cocrfeni_super_buffer = io.StringIO()
+            cocrfeni_super.to(filename=cocrfeni_super_buffer, fmt="xsf")
+            save_to_db(conn, cocrfeni_super_file, "XSF", cocrfeni_super_buffer.getvalue().encode())
+            st.success(f"Created {cocrfeni_super_file}")
 
-        # Step 6: Substitute Ni with Al
-        al0p5cocrfeni_super = cocrfeni_super.copy()
-        ni_indices = [i for i, site in enumerate(al0p5cocrfeni_super) if site.species_string == "Ni"]
-        al_indices = random.sample(ni_indices, int(num_atoms * n / 100))
-        for idx in al_indices:
-            al0p5cocrfeni_super[idx] = "Al"
-        al0p5cocrfeni_super_file = "al0p5cocrfeni_super.xsf"
-        al0p5cocrfeni_super_file = get_unique_filename(conn, al0p5cocrfeni_super_file, "xsf")
-        al0p5cocrfeni_super_buffer = io.StringIO()
-        al0p5cocrfeni_super.to(filename=al0p5cocrfeni_super_buffer, fmt="xsf")
-        save_to_db(conn, al0p5cocrfeni_super_file, "XSF", al0p5cocrfeni_super_buffer.getvalue().encode())
-        st.success(f"Created {al0p5cocrfeni_super_file}")
+            # Step 6: Substitute Ni with Al
+            al0p5cocrfeni_super = cocrfeni_super.copy()
+            ni_indices = [i for i, site in enumerate(al0p5cocrfeni_super) if site.species_string == "Ni"]
+            num_al_sub = int(num_atoms * n / 100)
+            if len(ni_indices) < num_al_sub:
+                st.error(f"Not enough Ni atoms for Al substitution. Required: {num_al_sub}, Available: {len(ni_indices)}")
+                raise ValueError("Insufficient Ni atoms for substitution")
+            al_indices = random.sample(ni_indices, num_al_sub)
+            for idx in al_indices:
+                al0p5cocrfeni_super[idx] = "Al"
+            al0p5cocrfeni_super_file = "al0p5cocrfeni_super.xsf"
+            al0p5cocrfeni_super_file = get_unique_filename(conn, al0p5cocrfeni_super_file, "XSF")
+            al0p5cocrfeni_super_buffer = io.StringIO()
+            al0p5cocrfeni_super.to(filename=al0p5cocrfeni_super_buffer, fmt="xsf")
+            save_to_db(conn, al0p5cocrfeni_super_file, "XSF", al0p5cocrfeni_super_buffer.getvalue().encode())
+            st.success(f"Created {al0p5cocrfeni_super_file}")
 
-        # Step 7: Mirror along Y
-        mirrored_structure = al0p5cocrfeni_super.copy()
-        mirrored_coords = mirrored_structure.frac_coords.copy()
-        mirrored_coords[:, 1] = -mirrored_coords[:, 1]  # Reflect across Y=0
-        mirrored_structure = Structure(mirrored_structure.lattice, mirrored_structure.species, mirrored_coords, coords_are_cartesian=False)
-        al0p5cocrfeni_mirror_file = "al0p5cocrfeni_mirror.xsf"
-        al0p5cocrfeni_mirror_file = get_unique_filename(conn, al0p5cocrfeni_mirror_file, "xsf")
-        al0p5cocrfeni_mirror_buffer = io.StringIO()
-        mirrored_structure.to(filename=al0p5cocrfeni_mirror_buffer, fmt="xsf")
-        save_to_db(conn, al0p5cocrfeni_mirror_file, "XSF", al0p5cocrfeni_mirror_buffer.getvalue().encode())
-        st.success(f"Created {al0p5cocrfeni_mirror_file}")
+            # Step 7: Mirror along Y
+            mirrored_structure = al0p5cocrfeni_super.copy()
+            mirrored_coords = mirrored_structure.frac_coords.copy()
+            mirrored_coords[:, 1] = -mirrored_coords[:, 1]  # Reflect across Y=0
+            mirrored_structure = Structure(mirrored_structure.lattice, mirrored_structure.species, mirrored_coords, coords_are_cartesian=False)
+            al0p5cocrfeni_mirror_file = "al0p5cocrfeni_mirror.xsf"
+            al0p5cocrfeni_mirror_file = get_unique_filename(conn, al0p5cocrfeni_mirror_file, "XSF")
+            al0p5cocrfeni_mirror_buffer = io.StringIO()
+            mirrored_structure.to(filename=al0p5cocrfeni_mirror_buffer, fmt="xsf")
+            save_to_db(conn, al0p5cocrfeni_mirror_file, "XSF", al0p5cocrfeni_mirror_buffer.getvalue().encode())
+            st.success(f"Created {al0p5cocrfeni_mirror_file}")
 
-        # Step 8: Merge structures
-        # Approximate by creating a supercell doubled in Y direction
-        merged_structure = al0p5cocrfeni_super.copy()
-        merged_structure = merged_structure * (1, 2, 1)  # Double in Y direction
-        num_atoms = len(al0p5cocrfeni_super)
-        for i in range(num_atoms):
-            merged_structure[num_atoms + i] = mirrored_structure[i]
-        al0p5cocrfeni_nanotwin_file = "al0p5cocrfeni_nanotwin.xsf"
-        al0p5cocrfeni_nanotwin_file = get_unique_filename(conn, al0p5cocrfeni_nanotwin_file, "xsf")
-        al0p5cocrfeni_nanotwin_buffer = io.StringIO()
-        merged_structure.to(filename=al0p5cocrfeni_nanotwin_buffer, fmt="xsf")
-        save_to_db(conn, al0p5cocrfeni_nanotwin_file, "XSF", al0p5cocrfeni_nanotwin_buffer.getvalue().encode())
-        st.success(f"Created {al0p5cocrfeni_nanotwin_file}")
+            # Step 8: Merge structures
+            # Approximate by creating a supercell doubled in Y direction
+            merged_structure = al0p5cocrfeni_super.copy()
+            merged_structure = merged_structure * (1, 2, 1)  # Double in Y direction
+            num_atoms = len(al0p5cocrfeni_super)
+            for i in range(num_atoms):
+                merged_structure[num_atoms + i] = mirrored_structure[i]
+            al0p5cocrfeni_nanotwin_file = "al0p5cocrfeni_nanotwin.xsf"
+            al0p5cocrfeni_nanotwin_file = get_unique_filename(conn, al0p5cocrfeni_nanotwin_file, "XSF")
+            al0p5cocrfeni_nanotwin_buffer = io.StringIO()
+            merged_structure.to(filename=al0p5cocrfeni_nanotwin_buffer, fmt="xsf")
+            save_to_db(conn, al0p5cocrfeni_nanotwin_file, "XSF", al0p5cocrfeni_nanotwin_buffer.getvalue().encode())
+            st.success(f"Created {al0p5cocrfeni_nanotwin_file}")
 
-        # Save CFG and CIF versions of final structure
-        cfg_buffer = io.StringIO()
-        LammpsData.from_structure(merged_structure).to_file(filename=cfg_buffer, style="atomic")
-        cfg_file = "al0p5cocrfeni_nanotwin.cfg"
-        cfg_file = get_unique_filename(conn, cfg_file, "cfg")
-        save_to_db(conn, cfg_file, "CFG", cfg_buffer.getvalue().encode())
-        st.success(f"Created {cfg_file}")
+            # Save CFG and CIF versions of final structure
+            cfg_buffer = io.StringIO()
+            LammpsData.from_structure(merged_structure).to_file(filename=cfg_buffer, style="atomic")
+            cfg_file = "al0p5cocrfeni_nanotwin.cfg"
+            cfg_file = get_unique_filename(conn, cfg_file, "CFG")
+            save_to_db(conn, cfg_file, "CFG", cfg_buffer.getvalue().encode())
+            st.success(f"Created {cfg_file}")
 
-        cif_buffer = io.StringIO()
-        CifWriter(merged_structure).write_file(cif_buffer)
-        cif_file = "al0p5cocrfeni_nanotwin.cif"
-        cif_file = get_unique_filename(conn, cif_file, "cif")
-        save_to_db(conn, cif_file, "CIF", cif_buffer.getvalue().encode())
-        st.success(f"Created {cif_file}")
+            cif_buffer = io.StringIO()
+            CifWriter(merged_structure).write_file(cif_buffer)
+            cif_file = "al0p5cocrfeni_nanotwin.cif"
+            cif_file = get_unique_filename(conn, cif_file, "CIF")
+            save_to_db(conn, cif_file, "CIF", cif_buffer.getvalue().encode())
+            st.success(f"Created {cif_file}")
+
+        except Exception as e:
+            st.error(f"Error during structure generation: {e}")
+            raise
 
 # File download section
 st.header("Download Files")
-c = conn.cursor()
-c.execute("SELECT filename, format, data FROM structures")
-files = c.fetchall()
-for filename, format, data in files:
-    st.download_button(
-        label=f"Download {filename}",
-        data=data,
-        file_name=filename,
-        mime=f"text/{format.lower()}"
-    )
-
-conn.close()
+try:
+    c = conn.cursor()
+    c.execute("SELECT filename, format, data FROM structures")
+    files = c.fetchall()
+    for filename, format, data in files:
+        st.download_button(
+            label=f"Download {filename}",
+            data=data,
+            file_name=filename,
+            mime=f"text/{format.lower()}"
+        )
+except Exception as e:
+    st.error(f"Error retrieving files from database: {e}")
+finally:
+    conn.close()
