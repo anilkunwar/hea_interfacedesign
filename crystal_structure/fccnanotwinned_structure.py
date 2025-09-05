@@ -173,6 +173,7 @@ if st.button("Generate Structures"):
 
             # Step 2: Supercell
             ni_super = ni_unit * (nx, ny, nz)
+            st.write(f"Supercell atom counts: {ni_super.get_chemical_symbols().count('Ni')} Ni")
             with tempfile.TemporaryDirectory() as td:
                 temp_file = pathlib.Path(td) / "ni_super.cif"
                 ni_super.to(filename=temp_file, fmt="cif")
@@ -198,6 +199,7 @@ if st.button("Generate Structures"):
             sub_indices = random.sample(ni_indices, num_sub)
             for idx in sub_indices:
                 feni_super[idx] = "Fe"
+            st.write(f"Fe substitution atom counts: {feni_super.get_chemical_symbols().count('Ni')} Ni, {feni_super.get_chemical_symbols().count('Fe')} Fe")
             with tempfile.TemporaryDirectory() as td:
                 temp_file = pathlib.Path(td) / "feni_super.cif"
                 feni_super.to(filename=temp_file, fmt="cif")
@@ -221,6 +223,7 @@ if st.button("Generate Structures"):
             sub_indices = random.sample(ni_indices, num_sub)
             for idx in sub_indices:
                 crfeni_super[idx] = "Cr"
+            st.write(f"Cr substitution atom counts: {crfeni_super.get_chemical_symbols().count('Ni')} Ni, {crfeni_super.get_chemical_symbols().count('Fe')} Fe, {crfeni_super.get_chemical_symbols().count('Cr')} Cr")
             with tempfile.TemporaryDirectory() as td:
                 temp_file = pathlib.Path(td) / "crfeni_super.cif"
                 crfeni_super.to(filename=temp_file, fmt="cif")
@@ -244,6 +247,7 @@ if st.button("Generate Structures"):
             sub_indices = random.sample(ni_indices, num_sub)
             for idx in sub_indices:
                 cocrfeni_super[idx] = "Co"
+            st.write(f"Co substitution atom counts: {cocrfeni_super.get_chemical_symbols().count('Ni')} Ni, {cocrfeni_super.get_chemical_symbols().count('Fe')} Fe, {cocrfeni_super.get_chemical_symbols().count('Cr')} Cr, {cocrfeni_super.get_chemical_symbols().count('Co')} Co")
             with tempfile.TemporaryDirectory() as td:
                 temp_file = pathlib.Path(td) / "cocrfeni_super.cif"
                 cocrfeni_super.to(filename=temp_file, fmt="cif")
@@ -268,6 +272,7 @@ if st.button("Generate Structures"):
             sub_indices = random.sample(ni_indices, num_al_sub)
             for idx in sub_indices:
                 al_super[idx] = "Al"
+            st.write(f"Al substitution atom counts: {al_super.get_chemical_symbols().count('Ni')} Ni, {al_super.get_chemical_symbols().count('Fe')} Fe, {al_super.get_chemical_symbols().count('Cr')} Cr, {al_super.get_chemical_symbols().count('Co')} Co, {al_super.get_chemical_symbols().count('Al')} Al")
             with tempfile.TemporaryDirectory() as td:
                 temp_file = pathlib.Path(td) / "al0p5cocrfeni_super.cif"
                 al_super.to(filename=temp_file, fmt="cif")
@@ -297,7 +302,7 @@ if st.button("Generate Structures"):
                 st.success(f"Created {mirror_file}")
 
             # Step 8: Merge original and mirrored structures along Y
-            cell_mat = al_super.lattice.matrix
+            cell_mat = al_super.lattice.matrix.copy()  # Copy to avoid read-only error
             cell_mat[1, :] *= 2  # Double Y lattice vector
             super_lattice = Lattice(cell_mat)
             base_frac = al_super.frac_coords
@@ -306,6 +311,7 @@ if st.button("Generate Structures"):
             combined_coords = np.vstack([base_frac, mirrored_frac])
             combined_species = al_super.species + al_mirror.species
             merged_structure = Structure(super_lattice, combined_species, combined_coords, coords_are_cartesian=False)
+            st.write(f"Nanotwin atom counts: {merged_structure.get_chemical_symbols().count('Ni')} Ni, {merged_structure.get_chemical_symbols().count('Fe')} Fe, {merged_structure.get_chemical_symbols().count('Cr')} Cr, {merged_structure.get_chemical_symbols().count('Co')} Co, {merged_structure.get_chemical_symbols().count('Al')} Al")
             with tempfile.TemporaryDirectory() as td:
                 temp_file = pathlib.Path(td) / "al0p5cocrfeni_nanotwin.cif"
                 merged_structure.to(filename=temp_file, fmt="cif")
