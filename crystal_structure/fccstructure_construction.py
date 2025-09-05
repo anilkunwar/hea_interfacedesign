@@ -9,7 +9,7 @@ import uuid
 import os
 import tempfile
 import pathlib
-import py3dmol
+import py3Dmol
 
 # -------------------- Database helpers -------------------- #
 def init_db():
