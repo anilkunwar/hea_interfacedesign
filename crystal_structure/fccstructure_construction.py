@@ -29,13 +29,20 @@ def get_unique_filename(conn, filename, format):
     
     if c.fetchone():
         st.warning(f"File '{proposed_filename}' already exists.")
+        iteration = 0
         while True:
-            new_name = st.text_input(f"Enter a new name for {base_name} (without extension):", f"{base_name}_new")
+            # Use a unique key for each text_input to avoid duplicate ID error
+            new_name = st.text_input(
+                f"Enter a new name for {base_name} (without extension):",
+                f"{base_name}_new_{iteration}",
+                key=f"text_input_{base_name}_{iteration}"
+            )
             proposed_filename = f"{new_name}.{format.lower()}"
             c.execute("SELECT filename FROM structures WHERE filename = ?", (proposed_filename,))
             if not c.fetchone():
                 return proposed_filename
             st.error(f"Filename '{proposed_filename}' already exists. Please choose a different name.")
+            iteration += 1
     return proposed_filename
 
 # Save file to SQLite
@@ -59,6 +66,28 @@ def clear_database(conn):
     c.execute("DELETE FROM structures")
     conn.commit()
     st.success("Database cleared successfully.")
+
+# Display download section in sidebar
+def display_download_section():
+    st.sidebar.header("Download Files")
+    try:
+        conn = init_db()  # Create a new connection for the sidebar
+        c = conn.cursor()
+        c.execute("SELECT filename, format, data FROM structures")
+        files = c.fetchall()
+        if not files:
+            st.sidebar.info("No files available for download.")
+        for filename, format, data in files:
+            st.sidebar.download_button(
+                label=f"Download {filename}",
+                data=data,
+                file_name=filename,
+                mime=f"text/{format.lower()}",
+                key=f"download_{filename}"  # Unique key for each download button
+            )
+        conn.close()
+    except Exception as e:
+        st.sidebar.error(f"Error retrieving files from database: {e}")
 
 # Streamlit app
 st.title("Crystal Structure Generator (Al0.5CoCrFeNi Nanotwin)")
@@ -204,20 +233,5 @@ if st.button("Generate Structures"):
             st.error(f"Error during structure generation: {e}")
             raise
 
-# File download section
-st.header("Download Files")
-try:
-    c = conn.cursor()
-    c.execute("SELECT filename, format, data FROM structures")
-    files = c.fetchall()
-    for filename, format, data in files:
-        st.download_button(
-            label=f"Download {filename}",
-            data=data,
-            file_name=filename,
-            mime=f"text/{format.lower()}"
-        )
-except Exception as e:
-    st.error(f"Error retrieving files from database: {e}")
-finally:
-    conn.close()
+# Display download section in sidebar
+display_download_section()
