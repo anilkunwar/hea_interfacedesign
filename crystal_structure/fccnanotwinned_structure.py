@@ -32,7 +32,7 @@ def get_unique_filename(conn, filename, format):
     while True:
         c.execute("SELECT filename FROM structures WHERE filename = ?", (proposed_filename,))
         if not c.fetchone():
-            return proposed_filename  # Unique filename found
+            return proposed_filename
         proposed_filename = f"{base_name}_{counter}.{ext}"
         counter += 1
 
@@ -112,7 +112,12 @@ def visualize_structure(atoms, format="cif"):
                 data = f.read()
             view = py3Dmol.view(width=600, height=400)
             view.addModel(data, format)
-            view.setStyle({"sphere": {"radius": 0.5}})
+            view.setStyle({
+                "sphere": {
+                    "radius": 0.5,
+                    "colorscheme": {"Ni": "silver", "Fe": "orange", "Cr": "green", "Co": "blue", "Al": "gray"}
+                }
+            })
             view.addUnitCell()
             view.zoomTo()
             st.components.v1.html(view._make_html(), width=600, height=400)
@@ -122,7 +127,7 @@ def visualize_structure(atoms, format="cif"):
 # -------------------- Streamlit UI -------------------- #
 st.title("Crystal Structure Generator (Al0.5CoCrFeNi Nanotwin)")
 
-# Clean database at startup to remove empty entries
+# Clean database at startup
 conn = init_db()
 clean_database(conn)
 
@@ -145,12 +150,16 @@ if st.button("Generate Structures"):
             st.write(f"Creating FCC Ni with lattice constant {a} Å and atomic number 28")
             try:
                 ni_unit = make.fcc(a, 28)  # Use atomic number for Ni
-                st.write(f"Created FCC Ni unit cell: {ni_unit.atoms.schema}")
+                st.write(f"Created FCC Ni unit cell. Schema: {ni_unit.atoms.schema}")
+                if ni_unit.atoms.try_get_column("elem") is None or ni_unit.atoms.try_get_column("symbol") is None:
+                    raise ValueError("Missing required columns 'elem' or 'symbol' in ni_unit")
             except Exception as e:
                 st.warning(f"Failed with atomic number 28: {e}. Trying symbol 'ni'.")
                 try:
                     ni_unit = make.fcc(a, "ni")  # Try lowercase symbol
-                    st.write(f"Created FCC Ni unit cell: {ni_unit.atoms.schema}")
+                    st.write(f"Created FCC Ni unit cell. Schema: {ni_unit.atoms.schema}")
+                    if ni_unit.atoms.try_get_column("elem") is None or ni_unit.atoms.try_get_column("symbol") is None:
+                        raise ValueError("Missing required columns 'elem' or 'symbol' in ni_unit")
                 except Exception as e:
                     st.error(f"Failed with 'ni': {e}. Cannot create FCC Ni unit cell.")
                     raise
@@ -163,6 +172,7 @@ if st.button("Generate Structures"):
             ])
             new_cell = ni_unit.cell.transform(orientation_matrix)
             ni_unit = AtomCell(ni_unit.atoms, new_cell)
+            ni_unit = ni_unit.deduplicate(tol=0.001)  # Remove duplicates
             with tempfile.TemporaryDirectory() as td:
                 temp_file = pathlib.Path(td) / "ni_unit.xsf"
                 ni_unit.write_xsf(temp_file)
@@ -171,7 +181,6 @@ if st.button("Generate Structures"):
                 save_to_db(conn, ni_unit_file, "XSF", xsf_str)
                 st.success(f"Created {ni_unit_file}")
 
-                # Save CFG for ni_unit
                 temp_file = pathlib.Path(td) / "ni_unit.cfg"
                 ni_unit.write_cfg(temp_file)
                 data = temp_file.read_bytes()
@@ -181,6 +190,7 @@ if st.button("Generate Structures"):
 
             # Step 2: Supercell
             ni_super = ni_unit.replicate((nx, ny, nz))
+            ni_super = ni_super.deduplicate(tol=0.001)
             with tempfile.TemporaryDirectory() as td:
                 temp_file = pathlib.Path(td) / "ni_super.xsf"
                 ni_super.write_xsf(temp_file)
@@ -189,7 +199,6 @@ if st.button("Generate Structures"):
                 save_to_db(conn, ni_super_file, "XSF", xsf_str)
                 st.success(f"Created {ni_super_file}")
 
-                # Save CFG
                 temp_file = pathlib.Path(td) / "ni_super.cfg"
                 ni_super.write_cfg(temp_file)
                 data = temp_file.read_bytes()
@@ -215,6 +224,7 @@ if st.button("Generate Structures"):
                 .otherwise(pl.col("symbol"))
                 .alias("symbol")
             )
+            feni_super = feni_super.deduplicate(tol=0.001)
             with tempfile.TemporaryDirectory() as td:
                 temp_file = pathlib.Path(td) / "feni_super.xsf"
                 feni_super.write_xsf(temp_file)
@@ -223,7 +233,6 @@ if st.button("Generate Structures"):
                 save_to_db(conn, feni_super_file, "XSF", xsf_str)
                 st.success(f"Created {feni_super_file}")
 
-                # Save CFG
                 temp_file = pathlib.Path(td) / "feni_super.cfg"
                 feni_super.write_cfg(temp_file)
                 data = temp_file.read_bytes()
@@ -247,6 +256,7 @@ if st.button("Generate Structures"):
                 .otherwise(pl.col("symbol"))
                 .alias("symbol")
             )
+            crfeni_super = crfeni_super.deduplicate(tol=0.001)
             with tempfile.TemporaryDirectory() as td:
                 temp_file = pathlib.Path(td) / "crfeni_super.xsf"
                 crfeni_super.write_xsf(temp_file)
@@ -255,7 +265,6 @@ if st.button("Generate Structures"):
                 save_to_db(conn, crfeni_super_file, "XSF", xsf_str)
                 st.success(f"Created {crfeni_super_file}")
 
-                # Save CFG
                 temp_file = pathlib.Path(td) / "crfeni_super.cfg"
                 crfeni_super.write_cfg(temp_file)
                 data = temp_file.read_bytes()
@@ -279,6 +288,7 @@ if st.button("Generate Structures"):
                 .otherwise(pl.col("symbol"))
                 .alias("symbol")
             )
+            cocrfeni_super = cocrfeni_super.deduplicate(tol=0.001)
             with tempfile.TemporaryDirectory() as td:
                 temp_file = pathlib.Path(td) / "cocrfeni_super.xsf"
                 cocrfeni_super.write_xsf(temp_file)
@@ -287,7 +297,6 @@ if st.button("Generate Structures"):
                 save_to_db(conn, cocrfeni_super_file, "XSF", xsf_str)
                 st.success(f"Created {cocrfeni_super_file}")
 
-                # Save CFG
                 temp_file = pathlib.Path(td) / "cocrfeni_super.cfg"
                 cocrfeni_super.write_cfg(temp_file)
                 data = temp_file.read_bytes()
@@ -312,6 +321,7 @@ if st.button("Generate Structures"):
                 .otherwise(pl.col("symbol"))
                 .alias("symbol")
             )
+            al_super = al_super.deduplicate(tol=0.001)
             with tempfile.TemporaryDirectory() as td:
                 temp_file = pathlib.Path(td) / "al0p5cocrfeni_super.xsf"
                 al_super.write_xsf(temp_file)
@@ -320,7 +330,6 @@ if st.button("Generate Structures"):
                 save_to_db(conn, al_super_file, "XSF", xsf_str)
                 st.success(f"Created {al_super_file}")
 
-                # Save CFG
                 temp_file = pathlib.Path(td) / "al0p5cocrfeni_super.cfg"
                 al_super.write_cfg(temp_file)
                 data = temp_file.read_bytes()
@@ -330,11 +339,10 @@ if st.button("Generate Structures"):
 
             # Step 7: Mirror across Y=0 with wrapping
             al_mirror = al_super.copy()
-            frac_coords = al_mirror.atoms.select(["x", "y", "z"]).to_numpy()
-            frac_coords[:, 1] = (-frac_coords[:, 1]) % 1.0  # Mirror across Y=0 and wrap to [0,1)
-            al_mirror.atoms = al_mirror.atoms.with_columns(
-                pl.DataFrame(frac_coords, schema=["x", "y", "z"])
-            )
+            frac_coords = al_mirror.atoms.coords(frame="cell_frac")
+            frac_coords[:, 1] = (-frac_coords[:, 1]) % 1.0  # Mirror across Y=0 and wrap
+            al_mirror = al_mirror.with_coords(frac_coords, frame="cell_frac")
+            al_mirror = al_mirror.deduplicate(tol=0.001)
             with tempfile.TemporaryDirectory() as td:
                 temp_file = pathlib.Path(td) / "al0p5cocrfeni_mirror.xsf"
                 al_mirror.write_xsf(temp_file)
@@ -347,8 +355,8 @@ if st.button("Generate Structures"):
             cell_mat = al_super.cell.to_matrix()
             cell_mat[1, :] *= 2  # Double Y lattice vector
             super_cell = al_super.cell.from_matrix(cell_mat)
-            base_frac = al_super.atoms.select(["x", "y", "z"]).to_numpy()
-            mirrored_frac = al_mirror.atoms.select(["x", "y", "z"]).to_numpy()
+            base_frac = al_super.atoms.coords(frame="cell_frac")
+            mirrored_frac = al_mirror.atoms.coords(frame="cell_frac")
             mirrored_frac[:, 1] = (mirrored_frac[:, 1] + 0.5) % 1.0  # Shift to top half
             base_atoms = al_super.atoms.select(["elem", "symbol"])
             mirrored_atoms = al_mirror.atoms.select(["elem", "symbol"])
@@ -362,6 +370,7 @@ if st.button("Generate Structures"):
                 "z": combined_coords[:, 2]
             })
             merged_structure = AtomCell(Atoms(merged_atoms), super_cell)
+            merged_structure = merged_structure.deduplicate(tol=0.001)
             with tempfile.TemporaryDirectory() as td:
                 temp_file = pathlib.Path(td) / "al0p5cocrfeni_nanotwin.xsf"
                 merged_structure.write_xsf(temp_file)
@@ -370,7 +379,6 @@ if st.button("Generate Structures"):
                 save_to_db(conn, nanotwin_file, "XSF", xsf_str)
                 st.success(f"Created {nanotwin_file}")
 
-                # Save CFG for nanotwin
                 temp_file = pathlib.Path(td) / "al0p5cocrfeni_nanotwin.cfg"
                 merged_structure.write_cfg(temp_file)
                 data = temp_file.read_bytes()
@@ -378,7 +386,6 @@ if st.button("Generate Structures"):
                 save_to_db(conn, cfg_file, "CFG", data)
                 st.success(f"Created {cfg_file}")
 
-                # Save CIF for nanotwin
                 temp_file = pathlib.Path(td) / "al0p5cocrfeni_nanotwin.cif"
                 merged_structure.write_cif(temp_file)
                 data = temp_file.read_bytes()
@@ -408,14 +415,12 @@ try:
         selected_file = st.selectbox("Select a structure to visualize", file_options)
         if selected_file:
             with st.spinner("Loading visualization..."):
-                # Retrieve the selected file's data
                 conn = init_db()
                 c = conn.cursor()
                 c.execute("SELECT format, data FROM structures WHERE filename = ?", (selected_file,))
                 format, data = c.fetchone()
                 conn.close()
 
-                # Convert data to atomlib Atoms for visualization
                 with tempfile.TemporaryDirectory() as td:
                     temp_file = pathlib.Path(td) / f"temp.{format.lower()}"
                     with open(temp_file, "wb") as f:
