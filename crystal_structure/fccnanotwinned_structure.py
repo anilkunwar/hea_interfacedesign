@@ -142,7 +142,17 @@ if st.button("Generate Structures"):
     with st.spinner("Generating structures..."):
         try:
             # Step 1: FCC Ni unit cell with [11-2], [111], [-110] orientation
-            ni_unit = make.fcc(a, "Ni")
+            try:
+                st.write(f"Attempting to create FCC Ni with element 'Ni'")
+                ni_unit = make.fcc(a, "Ni")  # Try with "Ni"
+            except Exception as e:
+                st.warning(f"Failed with 'Ni': {e}. Trying lowercase 'ni'.")
+                try:
+                    ni_unit = make.fcc(a, "ni")  # Try lowercase
+                except Exception as e:
+                    st.warning(f"Failed with 'ni': {e}. Trying atomic number 28.")
+                    ni_unit = make.fcc(a, 28)  # Try atomic number for Ni
+
             # Apply orientation transformation: [11-2], [111], [-110]
             orientation_matrix = np.array([
                 [1, 1, -2],  # X aligns with [11-2]
