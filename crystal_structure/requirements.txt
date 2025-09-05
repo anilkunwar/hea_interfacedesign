@@ -3,4 +3,4 @@ ase
 pymatgen
 atomlib
 nglview
-py3dmol
+py3Dmol
