@@ -13,6 +13,6 @@ atomsk cocrfeni_super.xsf -select random $n% Ni -substitute Ni Al al1p1cocrfeni_
 
 
 # Apply mirror symmetry
-atomsk al0p5cocrfeni_super.xsf -mirror 0 Y -wrap al0p5cocrfeni_mirror.xsf
+atomsk al1p1cocrfeni_super.xsf -mirror 0 Y -wrap al1p1cocrfeni_mirror.xsf
 # Merge the original super cell with the mirror supercell
 atomsk --merge Y 2 al1p1cocrfeni_super.xsf al1p1cocrfeni_mirror.xsf al1p1cocrfeni_nanotwin.xsf cfg
