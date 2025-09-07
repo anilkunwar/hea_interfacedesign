@@ -97,9 +97,7 @@ def matplotlib_to_plotly_colormap(cmap_name, n_colors=256):
         return matplotlib_to_plotly_colormap('viridis')
 
 # --- Create ternary plot ---
-def create_ternary_plot(df, color_values, colormap, marker_size, line_thickness, grid_thickness, show_grid,
-                        font_size, al_label, cocr_label, feni_label, axis_color, grid_color, label_color,
-                        title_spacing, fig_width, fig_height, colorbar_font_size, label_spacing):
+def create_ternary_plot(df, color_values, colormap, marker_size, line_thickness, grid_thickness, show_grid, font_size, al_label, cocr_label, feni_label, axis_color, grid_color, label_color, title_spacing, fig_width, fig_height):
     colorscale = matplotlib_to_plotly_colormap(colormap)
     fig = go.Figure()
 
@@ -113,12 +111,7 @@ def create_ternary_plot(df, color_values, colormap, marker_size, line_thickness,
             color=color_values,
             colorscale=colorscale,
             showscale=True,
-            colorbar=dict(
-                title="Structure (1=FCC,0=BCC)",
-                thickness=20,
-                tickfont=dict(size=colorbar_font_size),
-                titlefont=dict(size=colorbar_font_size)
-            ),
+            colorbar=dict(title="Structure (1=FCC,0=BCC)", thickness=20),
             cmin=0, cmax=1
         ),
         text=df['mpea'],
@@ -128,24 +121,18 @@ def create_ternary_plot(df, color_values, colormap, marker_size, line_thickness,
 
     fig.update_ternaries(
         sum=1,
-        aaxis=dict(
-            title=dict(text=al_label, font=dict(size=font_size, color=label_color), standoff=label_spacing),
-            tickfont=dict(size=font_size, color=label_color),
-            linewidth=line_thickness, linecolor=axis_color,
-            gridcolor=grid_color if show_grid else None, gridwidth=grid_thickness
-        ),
-        baxis=dict(
-            title=dict(text=cocr_label, font=dict(size=font_size, color=label_color), standoff=label_spacing),
-            tickfont=dict(size=font_size, color=label_color),
-            linewidth=line_thickness, linecolor=axis_color,
-            gridcolor=grid_color if show_grid else None, gridwidth=grid_thickness
-        ),
-        caxis=dict(
-            title=dict(text=feni_label, font=dict(size=font_size, color=label_color), standoff=label_spacing),
-            tickfont=dict(size=font_size, color=label_color),
-            linewidth=line_thickness, linecolor=axis_color,
-            gridcolor=grid_color if show_grid else None, gridwidth=grid_thickness
-        ),
+        aaxis=dict(title=dict(text=al_label, font=dict(size=font_size, color=label_color)),
+                   tickfont=dict(size=font_size, color=label_color),
+                   linewidth=line_thickness, linecolor=axis_color,
+                   gridcolor=grid_color if show_grid else None, gridwidth=grid_thickness),
+        baxis=dict(title=dict(text=cocr_label, font=dict(size=font_size, color=label_color)),
+                   tickfont=dict(size=font_size, color=label_color),
+                   linewidth=line_thickness, linecolor=axis_color,
+                   gridcolor=grid_color if show_grid else None, gridwidth=grid_thickness),
+        caxis=dict(title=dict(text=feni_label, font=dict(size=font_size, color=label_color)),
+                   tickfont=dict(size=font_size, color=label_color),
+                   linewidth=line_thickness, linecolor=axis_color,
+                   gridcolor=grid_color if show_grid else None, gridwidth=grid_thickness),
         bgcolor='white'
     )
 
@@ -164,12 +151,14 @@ def main():
     st.title("AlyCoCrFeNi Ternary Diagram")
     st.write("Visualize AlyCoCrFeNi alloy compositions with customizable ternary plot.")
 
+    # --- Data source ---
     uploaded_file = st.file_uploader("Upload CSV (optional)", type="csv")
     default_file = os.path.join(script_dir, "AlyCoCrFeNi_data.csv")
-    df = load_data(uploaded_file=uploaded_file, local_path=default_file)
 
+    # Load priority: uploaded > local
+    df = load_data(uploaded_file=uploaded_file, local_path=default_file)
     if df is None or not validate_data(df):
-        st.error("Failed to load a valid CSV file.")
+        st.error("Failed to load a valid CSV file. Please provide a valid CSV.")
         st.stop()
 
     df = normalize_ternary(df)
@@ -181,7 +170,7 @@ def main():
     line_thickness = st.sidebar.slider("Axis Line Thickness", 0.5, 5.0, 2.0, 0.1)
     grid_thickness = st.sidebar.slider("Grid Line Thickness", 0.1, 5.0, 0.5, 0.1)
     show_grid = st.sidebar.checkbox("Show Grid", value=True)
-    font_size = st.sidebar.slider("Vertex Label Font Size", 8, 20, 12, 1)
+    font_size = st.sidebar.slider("Font Size (Labels & Ticks)", 8, 20, 12, 1)
     marker_size = st.sidebar.slider("Marker Size", 4, 20, 8, 1)
     axis_color = st.sidebar.color_picker("Axis Color", "#000000")
     grid_color = st.sidebar.color_picker("Grid Color", "#888888")
@@ -189,22 +178,20 @@ def main():
     title_spacing = st.sidebar.slider("Title-Vertex Spacing (px)", 0, 100, 30, 1)
     fig_width = st.sidebar.slider("Figure Width (px)", 400, 1200, 700, 50)
     fig_height = st.sidebar.slider("Figure Height (px)", 400, 1200, 700, 50)
-    colorbar_font_size = st.sidebar.slider("Colorbar Font Size", 8, 20, 12, 1)
-    label_spacing = st.sidebar.slider("Vertex Label-Colorbar Spacing (px)", 0, 50, 10, 1)
-
     al_label = st.sidebar.text_input("Al Vertex Label", "Al")
     cocr_label = st.sidebar.text_input("CoCr Vertex Label", "Co+Cr")
     feni_label = st.sidebar.text_input("FeNi Vertex Label", "Fe+Ni")
 
+    # --- Plot ---
     fig = create_ternary_plot(df, color_values, colormap, marker_size, line_thickness, grid_thickness,
                               show_grid, font_size, al_label, cocr_label, feni_label,
                               axis_color, grid_color, label_color, title_spacing,
-                              fig_width, fig_height, colorbar_font_size, label_spacing)
-
+                              fig_width, fig_height)
     st.plotly_chart(fig, use_container_width=True)
 
     # --- Download CSV ---
-    st.download_button("Download CSV", df.to_csv(index=False), "AlyCoCrFeNi_data.csv", "text/csv")
+    csv = df.to_csv(index=False)
+    st.download_button("Download CSV", csv, "AlyCoCrFeNi_data.csv", "text/csv")
 
 if __name__ == "__main__":
     main()
