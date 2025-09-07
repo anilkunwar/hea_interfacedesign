@@ -111,7 +111,13 @@ def create_ternary_plot(df, color_values, colormap, marker_size, line_thickness,
             color=color_values,
             colorscale=colorscale,
             showscale=True,
-            colorbar=dict(title="Structure (1=FCC,0=BCC)", thickness=20),
+            colorbar=dict(
+                title="Structure (1=FCC,0=BCC)",
+                thickness=20,
+                xpad=20,  # Increased padding between colorbar and plot
+                titlefont=dict(size=font_size + 4),  # Increased colorbar title font size
+                tickfont=dict(size=font_size)  # Match tick font size to other labels
+            ),
             cmin=0, cmax=1
         ),
         text=df['mpea'],
