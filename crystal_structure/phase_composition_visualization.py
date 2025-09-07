@@ -2,47 +2,79 @@ import streamlit as st
 import pandas as pd
 import plotly.graph_objects as go
 import os
+import logging
 
-# Load CSV
+# === Logging setup ===
+script_dir = os.path.dirname(os.path.abspath(__file__))
+logging.basicConfig(
+    level=logging.INFO,
+    filename=os.path.join(script_dir, 'visual_app.log'),
+    format='%(asctime)s - %(levelname)s - %(message)s'
+)
+logger = logging.getLogger(__name__)
+
+# === Load CSV ===
 @st.cache_data
 def load_data(file_path=None, uploaded_file=None):
     try:
         if uploaded_file is not None:
             df = pd.read_csv(uploaded_file)
+            logger.info("Loaded uploaded CSV file")
         elif file_path is not None and os.path.exists(file_path):
             df = pd.read_csv(file_path)
+            logger.info(f"Loaded default CSV file: {file_path}")
         else:
-            st.error("No valid data source found.")
+            st.error("No valid data source found. Please upload a CSV file.")
+            logger.warning("No CSV file found")
             return None
 
         required_columns = ['mpea', 'structure', 'xAl', 'xNi', 'xCr', 'xCo', 'xFe']
         if not all(col in df.columns for col in required_columns):
-            st.error("CSV must contain columns: mpea, structure, xAl, xNi, xCr, xCo, xFe")
+            st.error(f"CSV must contain columns: {', '.join(required_columns)}")
+            logger.error("CSV missing required columns")
             return None
+
+        # Ensure numeric values
+        for col in ['xAl','xNi','xCr','xCo','xFe']:
+            df[col] = pd.to_numeric(df[col], errors='coerce')
+
+        if df[['xAl','xNi','xCr','xCo','xFe']].isnull().any().any():
+            st.error("CSV contains non-numeric or NaN values")
+            logger.error("CSV contains NaN or non-numeric values")
+            return None
+
         return df
+
     except Exception as e:
         st.error(f"Error loading CSV: {e}")
+        logger.exception("Failed to load CSV")
         return None
 
-# Assign color values
+# === Color values based on structure ===
 def get_color_values(df):
-    return [
-        1.0 if row['structure'] == 'FCC' else
-        0.0 if row['structure'] == 'BCC' else 0.5
-        for _, row in df.iterrows()
-    ]
+    color_values = []
+    for _, row in df.iterrows():
+        struct = row['structure']
+        if struct == 'FCC':
+            color_values.append(1.0)
+        elif struct == 'BCC':
+            color_values.append(0.0)
+        else:  # FCC+BCC or other
+            color_values.append(0.5)
+    return color_values
 
+# === Main App ===
 def main():
     st.title("AlyCoCrFeNi Ternary Diagram")
     st.write("Visualize the AlyCoCrFeNi alloy compositions in a ternary diagram with customizable options.")
 
-    # === Data source ===
+    # --- Data source ---
     uploaded_file = st.file_uploader("Upload CSV file (optional)", type="csv")
 
-    # Default local file
-    default_file = os.path.join(os.getcwd(), "AlyCoCrFeNi_data.csv")
+    # Default CSV in the same folder as this script
+    default_file = os.path.join(script_dir, "AlyCoCrFeNi_data.csv")
 
-    # Load priority: uploaded > local
+    # Load data
     df = load_data(file_path=default_file, uploaded_file=uploaded_file)
     if df is None:
         st.stop()
@@ -50,19 +82,15 @@ def main():
     st.write("Loaded Data:")
     st.dataframe(df)
 
-    # === Ternary coordinates ===
+    # --- Ternary coordinates ---
     df['p_Al'] = df['xAl']
     df['p_CoCr'] = df['xCo'] + df['xCr']
     df['p_FeNi'] = df['xFe'] + df['xNi']
 
-    # Check for NaN or infinite values in ternary coordinates
-    if df[['p_Al', 'p_CoCr', 'p_FeNi']].isnull().any().any() or not df[['p_Al', 'p_CoCr', 'p_FeNi']].applymap(lambda x: pd.notnull(x) and pd.api.types.is_number(x)).all().all():
-        st.error("Data contains NaN or non-numeric values in ternary coordinates.")
-        st.stop()
-
+    # --- Color mapping ---
     color_values = get_color_values(df)
 
-    # === Sidebar ===
+    # --- Sidebar customization ---
     st.sidebar.header("Plot Customization")
     line_thickness = float(st.sidebar.slider("Axis Line Thickness", 0.5, 5.0, 2.0, 0.1))
     grid_thickness = float(st.sidebar.slider("Grid Line Thickness", 0.1, 2.0, 0.5, 0.1))
@@ -73,9 +101,8 @@ def main():
     cocr_label = st.sidebar.text_input("CoCr Vertex Label", "Co+Cr")
     feni_label = st.sidebar.text_input("FeNi Vertex Label", "Fe+Ni")
 
-    # === Plot ===
+    # --- Plot ---
     fig = go.Figure()
-
     fig.add_trace(
         go.Scatterternary(
             a=df['p_Al'],
@@ -96,11 +123,11 @@ def main():
         )
     )
 
-    # Correct ternary layout
+    # --- Layout ---
     fig.update_layout(
         title=dict(
             text="Ternary Diagram of AlyCoCrFeNi Alloy",
-            font=dict(size=font_size+2)
+            font=dict(size=font_size + 2)
         ),
         ternary=dict(
             sum=1,
@@ -133,7 +160,7 @@ def main():
 
     st.plotly_chart(fig, use_container_width=True)
 
-    # CSV download
+    # --- Download CSV ---
     csv = df.to_csv(index=False)
     st.download_button("Download Loaded CSV", csv, "AlyCoCrFeNi_data.csv", "text/csv")
 
