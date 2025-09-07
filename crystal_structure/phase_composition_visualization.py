@@ -123,7 +123,7 @@ def main():
         )
     )
 
-    # --- Layout ---
+    # --- Layout with correct ternary axis title font ---
     fig.update_layout(
         title=dict(
             text="Ternary Diagram of AlyCoCrFeNi Alloy",
@@ -132,25 +132,22 @@ def main():
         ternary=dict(
             sum=1,
             aaxis=dict(
-                title=al_label,
+                title=dict(text=al_label, font=dict(size=font_size)),
+                tickfont=dict(size=font_size),
                 linewidth=line_thickness,
-                gridwidth=grid_thickness if show_grid else 0,
-                titlefont=dict(size=font_size),
-                tickfont=dict(size=font_size)
+                gridwidth=grid_thickness if show_grid else 0
             ),
             baxis=dict(
-                title=cocr_label,
+                title=dict(text=cocr_label, font=dict(size=font_size)),
+                tickfont=dict(size=font_size),
                 linewidth=line_thickness,
-                gridwidth=grid_thickness if show_grid else 0,
-                titlefont=dict(size=font_size),
-                tickfont=dict(size=font_size)
+                gridwidth=grid_thickness if show_grid else 0
             ),
             caxis=dict(
-                title=feni_label,
+                title=dict(text=feni_label, font=dict(size=font_size)),
+                tickfont=dict(size=font_size),
                 linewidth=line_thickness,
-                gridwidth=grid_thickness if show_grid else 0,
-                titlefont=dict(size=font_size),
-                tickfont=dict(size=font_size)
+                gridwidth=grid_thickness if show_grid else 0
             ),
             bgcolor="white"
         ),
