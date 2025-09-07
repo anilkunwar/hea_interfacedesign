@@ -189,8 +189,10 @@ def main():
     fig_width = st.sidebar.slider("Figure Width (px)", 400, 1200, 700, 50)
     fig_height = st.sidebar.slider("Figure Height (px)", 400, 1200, 700, 50)
     al_label = st.sidebar.text_input("Al Vertex Label", "Al")
-    cocr_label = st.sidebar.text_input("CoCr Vertex Label", "Co+Cr")
-    feni_label = st.sidebar.text_input("FeNi Vertex Label", "Fe+Ni")
+    #cocr_label = st.sidebar.text_input("CoCr Vertex Label", "Co+Cr")
+    cocr_label = st.sidebar.text_input("CoCr Vertex Label", "CoCr")
+    #feni_label = st.sidebar.text_input("FeNi Vertex Label", "Fe+Ni")
+    feni_label = st.sidebar.text_input("FeNi Vertex Label", "FeNi")
 
     # --- Plot ---
     fig = create_ternary_plot(df, color_values, colormap, marker_size, line_thickness, grid_thickness,
