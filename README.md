@@ -12,4 +12,5 @@ advanced:
 
 
 [![atomisticcalculations](https://img.shields.io/badge/ternaryDiagram-streamlit-red)](https://hea-phasecompositionvisualization.streamlit.app/)
+[![atomisticcalculations](https://img.shields.io/badge/enhancedvizternaryDiagram-streamlit-red)](https://hea-phasecompositionenhancedvisualization.streamlit.app/)
 
