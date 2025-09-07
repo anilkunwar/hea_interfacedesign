@@ -4,42 +4,45 @@ import plotly.graph_objects as go
 import matplotlib.cm as cm
 import matplotlib.colors as mcolors
 import numpy as np
-import os
+from io import StringIO
 
-# Function to generate alloy data
-def generate_hea_data(delta_y):
-    y_values = np.arange(0, 1.51, delta_y)
-    data = {
-        'mpea': [],
-        'structure': [],
-        'xAl': [],
-        'xNi': [],
-        'xCr': [],
-        'xCo': [],
-        'xFe': []
-    }
-    
-    for y in y_values:
-        alloy_name = f"Al{y:.3f}CoCrFeNi"
-        if y <= 0.5:
-            structure = 'FCC'
-        elif 0.5 < y <= 1.0:
-            structure = 'FCC+BCC'
+# Default data
+default_data = """mpea,structure,xAl,xNi,xCr,xCo,xFe
+Al0.000CoCrFeNi,FCC,0.0,0.25,0.25,0.25,0.25
+Al0.100CoCrFeNi,FCC,0.0244,0.2439,0.2439,0.2439,0.2439
+Al0.200CoCrFeNi,FCC,0.0476,0.2381,0.2381,0.2381,0.2381
+Al0.300CoCrFeNi,FCC,0.0698,0.2326,0.2326,0.2326,0.2326
+Al0.400CoCrFeNi,FCC,0.0909,0.2273,0.2273,0.2273,0.2273
+Al0.500CoCrFeNi,FCC,0.1111,0.2222,0.2222,0.2222,0.2222
+Al0.600CoCrFeNi,FCC+BCC,0.1304,0.2174,0.2174,0.2174,0.2174
+Al0.700CoCrFeNi,FCC+BCC,0.1489,0.2128,0.2128,0.2128,0.2128
+Al0.800CoCrFeNi,FCC+BCC,0.1667,0.2083,0.2083,0.2083,0.2083
+Al0.900CoCrFeNi,FCC+BCC,0.1837,0.2041,0.2041,0.2041,0.2041
+Al1.000CoCrFeNi,FCC+BCC,0.2,0.2,0.2,0.2,0.2
+Al1.100CoCrFeNi,BCC,0.2157,0.1961,0.1961,0.1961,0.1961
+Al1.200CoCrFeNi,BCC,0.2308,0.1923,0.1923,0.1923,0.1923
+Al1.300CoCrFeNi,BCC,0.2453,0.1887,0.1887,0.1887,0.1887
+Al1.400CoCrFeNi,BCC,0.2593,0.1852,0.1852,0.1852,0.1852
+Al1.500CoCrFeNi,BCC,0.2727,0.1818,0.1818,0.1818,0.1818"""
+
+# Function to load data
+@st.cache_data
+def load_data(uploaded_file=None):
+    try:
+        if uploaded_file is not None:
+            df = pd.read_csv(uploaded_file)
         else:
-            structure = 'BCC'
+            df = pd.read_csv(StringIO(default_data))
         
-        xAl = y / (y + 4)
-        x_other = (1 - xAl) / 4
-        
-        data['mpea'].append(alloy_name)
-        data['structure'].append(structure)
-        data['xAl'].append(round(xAl, 4))
-        data['xNi'].append(round(x_other, 4))
-        data['xCr'].append(round(x_other, 4))
-        data['xCo'].append(round(x_other, 4))
-        data['xFe'].append(round(x_other, 4))
-    
-    return pd.DataFrame(data)
+        # Verify required columns
+        required_columns = ['mpea', 'structure', 'xAl', 'xNi', 'xCr', 'xCo', 'xFe']
+        if not all(col in df.columns for col in required_columns):
+            st.error("CSV must contain columns: mpea, structure, xAl, xNi, xCr, xCo, xFe")
+            return None
+        return df
+    except Exception as e:
+        st.error(f"Error loading CSV: {e}")
+        return None
 
 # Function to assign color values based on structure and y
 def get_color_values(df):
@@ -47,7 +50,12 @@ def get_color_values(df):
     for _, row in df.iterrows():
         alloy_name = row['mpea']
         structure = row['structure']
-        y = float(alloy_name.split('Al')[1].split('Co')[0])
+        # Extract y from alloy name (e.g., Al0.300CoCrFeNi -> 0.300)
+        try:
+            y = float(alloy_name.split('Al')[1].split('Co')[0])
+        except:
+            st.error(f"Invalid alloy name format: {alloy_name}")
+            return None
         if structure == 'FCC':
             color_values.append(1.0)
         elif structure == 'BCC':
@@ -72,23 +80,17 @@ def main():
     st.title("AlyCoCrFeNi Ternary Diagram")
     st.write("Visualize the AlyCoCrFeNi alloy compositions in a ternary diagram with customizable options.")
 
-    # User input for delta_y
-    delta_y = st.slider(
-        "Select step size for y (stoichiometry of Al)",
-        min_value=0.001,
-        max_value=0.1,
-        value=0.05,
-        step=0.001,
-        format="%.3f"
-    )
+    # File upload option
+    uploaded_file = st.file_uploader("Upload CSV file (optional)", type="csv")
+    
+    # Load data
+    df = load_data(uploaded_file)
+    if df is None:
+        st.stop()
 
-    # Generate data
-    df = generate_hea_data(delta_y)
-
-    # Save CSV locally for reference
-    csv_path = os.path.join(os.getcwd(), "AlyCoCrFeNi_data.csv")
-    df.to_csv(csv_path, index=False)
-    st.write(f"Data saved locally at: {csv_path}")
+    # Display data
+    st.write("Loaded Data:")
+    st.dataframe(df)
 
     # Calculate ternary coordinates
     df['p_Al'] = df['xAl']
@@ -97,6 +99,8 @@ def main():
 
     # Get color values
     color_values = get_color_values(df)
+    if color_values is None:
+        st.stop()
 
     # Sidebar for customization
     st.sidebar.header("Plot Customization")
@@ -179,7 +183,7 @@ def main():
     # Provide CSV download
     csv = df.to_csv(index=False)
     st.download_button(
-        label="Download Generated CSV",
+        label="Download Loaded CSV",
         data=csv,
         file_name="AlyCoCrFeNi_data.csv",
         mime="text/csv"
