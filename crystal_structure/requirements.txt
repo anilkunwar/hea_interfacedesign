@@ -4,3 +4,4 @@ pymatgen
 atomlib
 nglview
 py3Dmol
+plotly
