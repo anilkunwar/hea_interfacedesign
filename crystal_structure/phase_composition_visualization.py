@@ -4,6 +4,7 @@ import plotly.graph_objects as go
 import matplotlib.cm as cm
 import matplotlib.colors as mcolors
 import numpy as np
+import os
 from io import StringIO
 
 # Default data
@@ -27,10 +28,14 @@ Al1.500CoCrFeNi,BCC,0.2727,0.1818,0.1818,0.1818,0.1818"""
 
 # Function to load data
 @st.cache_data
-def load_data(uploaded_file=None):
+def load_data(uploaded_file=None, local_path=None, github_url=None):
     try:
         if uploaded_file is not None:
             df = pd.read_csv(uploaded_file)
+        elif local_path and os.path.exists(local_path):
+            df = pd.read_csv(local_path)
+        elif github_url:
+            df = pd.read_csv(github_url)
         else:
             df = pd.read_csv(StringIO(default_data))
         
@@ -50,7 +55,6 @@ def get_color_values(df):
     for _, row in df.iterrows():
         alloy_name = row['mpea']
         structure = row['structure']
-        # Extract y from alloy name (e.g., Al0.300CoCrFeNi -> 0.300)
         try:
             y = float(alloy_name.split('Al')[1].split('Co')[0])
         except:
@@ -76,15 +80,34 @@ def get_colormap_options():
         'reds_r', 'purples_r', 'oranges_r', 'greys_r', 'YlOrRd_r', 'YlGnBu_r', 'RdBu_r'
     ])
 
+# Function to convert Matplotlib colormap to Plotly colorscale
+def matplotlib_to_plotly_colormap(cmap_name, n_colors=256):
+    cmap = cm.get_cmap(cmap_name)
+    colors = [mcolors.rgb2hex(cmap(i / (n_colors - 1))) for i in range(n_colors)]
+    return [[i / (n_colors - 1), color] for i, color in enumerate(colors)]
+
 def main():
     st.title("AlyCoCrFeNi Ternary Diagram")
     st.write("Visualize the AlyCoCrFeNi alloy compositions in a ternary diagram with customizable options.")
 
-    # File upload option
-    uploaded_file = st.file_uploader("Upload CSV file (optional)", type="csv")
-    
-    # Load data
-    df = load_data(uploaded_file)
+    # File input options
+    st.subheader("Data Source")
+    data_source = st.radio("Select data source:", ["Default Data", "Upload CSV", "Local File", "GitHub URL"])
+
+    df = None
+    if data_source == "Upload CSV":
+        uploaded_file = st.file_uploader("Upload CSV file", type="csv")
+        df = load_data(uploaded_file=uploaded_file)
+    elif data_source == "Local File":
+        local_path = st.text_input("Enter local CSV file name (in adjacent directory)", "AlyCoCrFeNi_data.csv")
+        full_path = os.path.join(os.path.dirname(__file__), "..", local_path)
+        df = load_data(local_path=full_path)
+    elif data_source == "GitHub URL":
+        github_url = st.text_input("Enter GitHub raw CSV URL", "")
+        df = load_data(github_url=github_url)
+    else:
+        df = load_data()
+
     if df is None:
         st.stop()
 
@@ -113,12 +136,11 @@ def main():
     cocr_label = st.sidebar.text_input("CoCr Vertex Label", "Co+Cr")
     feni_label = st.sidebar.text_input("FeNi Vertex Label", "Fe+Ni")
 
+    # Convert Matplotlib colormap to Plotly colorscale
+    plotly_colorscale = matplotlib_to_plotly_colormap(colormap)
+
     # Create ternary plot
     fig = go.Figure()
-
-    # Get colormap
-    cmap = cm.get_cmap(colormap)
-    colors = [mcolors.rgb2hex(cmap(val)) for val in color_values]
 
     # Add scatter points
     fig.add_trace(
@@ -130,7 +152,7 @@ def main():
             marker=dict(
                 size=8,
                 color=color_values,
-                colorscale=colormap,
+                colorscale=plotly_colorscale,
                 showscale=True,
                 colorbar=dict(title="Structure<br>(1=FCC, 0=BCC)", thickness=20),
                 cmin=0,
