@@ -55,14 +55,19 @@ def main():
     df['p_CoCr'] = df['xCo'] + df['xCr']
     df['p_FeNi'] = df['xFe'] + df['xNi']
 
+    # Check for NaN or infinite values in ternary coordinates
+    if df[['p_Al', 'p_CoCr', 'p_FeNi']].isnull().any().any() or not df[['p_Al', 'p_CoCr', 'p_FeNi']].applymap(lambda x: pd.notnull(x) and pd.api.types.is_number(x)).all().all():
+        st.error("Data contains NaN or non-numeric values in ternary coordinates.")
+        st.stop()
+
     color_values = get_color_values(df)
 
     # === Sidebar ===
     st.sidebar.header("Plot Customization")
-    line_thickness = st.sidebar.slider("Axis Line Thickness", 0.5, 5.0, 2.0, 0.1)
-    grid_thickness = st.sidebar.slider("Grid Line Thickness", 0.1, 2.0, 0.5, 0.1)
+    line_thickness = float(st.sidebar.slider("Axis Line Thickness", 0.5, 5.0, 2.0, 0.1))
+    grid_thickness = float(st.sidebar.slider("Grid Line Thickness", 0.1, 2.0, 0.5, 0.1))
     show_grid = st.sidebar.checkbox("Show Grid", value=True)
-    font_size = st.sidebar.slider("Font Size", 8, 20, 12, 1)
+    font_size = int(st.sidebar.slider("Font Size", 8, 20, 12, 1))
 
     al_label = st.sidebar.text_input("Al Vertex Label", "Al")
     cocr_label = st.sidebar.text_input("CoCr Vertex Label", "Co+Cr")
@@ -91,9 +96,12 @@ def main():
         )
     )
 
-    # ✅ Correct ternary layout
+    # Correct ternary layout
     fig.update_layout(
-        title="Ternary Diagram of AlyCoCrFeNi Alloy",
+        title=dict(
+            text="Ternary Diagram of AlyCoCrFeNi Alloy",
+            font=dict(size=font_size+2)
+        ),
         ternary=dict(
             sum=1,
             aaxis=dict(
