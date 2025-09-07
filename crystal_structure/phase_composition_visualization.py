@@ -87,6 +87,12 @@ def main():
     df['p_CoCr'] = df['xCo'] + df['xCr']
     df['p_FeNi'] = df['xFe'] + df['xNi']
 
+    # --- Normalize ternary coordinates to sum=1 ---
+    ternary_sum = df['p_Al'] + df['p_CoCr'] + df['p_FeNi']
+    df['p_Al_norm'] = df['p_Al'] / ternary_sum
+    df['p_CoCr_norm'] = df['p_CoCr'] / ternary_sum
+    df['p_FeNi_norm'] = df['p_FeNi'] / ternary_sum
+
     # --- Color mapping ---
     color_values = get_color_values(df)
 
@@ -105,9 +111,9 @@ def main():
     fig = go.Figure()
     fig.add_trace(
         go.Scatterternary(
-            a=df['p_Al'],
-            b=df['p_CoCr'],
-            c=df['p_FeNi'],
+            a=df['p_Al_norm'],
+            b=df['p_CoCr_norm'],
+            c=df['p_FeNi_norm'],
             mode="markers",
             marker=dict(
                 size=8,
@@ -123,7 +129,7 @@ def main():
         )
     )
 
-    # --- Layout with correct ternary axis title font ---
+    # --- Layout with correct ternary axis titles ---
     fig.update_layout(
         title=dict(
             text="Ternary Diagram of AlyCoCrFeNi Alloy",
