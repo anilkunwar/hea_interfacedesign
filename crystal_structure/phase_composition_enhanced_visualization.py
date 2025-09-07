@@ -97,7 +97,7 @@ def matplotlib_to_plotly_colormap(cmap_name, n_colors=256):
         return matplotlib_to_plotly_colormap('viridis')
 
 # --- Create ternary plot ---
-def create_ternary_plot(df, color_values, colormap, marker_size, line_thickness, grid_thickness, show_grid, font_size, al_label, cocr_label, feni_label, axis_color, grid_color, label_color, title_spacing, fig_width, fig_height):
+def create_ternary_plot(df, color_values, colormap, marker_size, line_thickness, grid_thickness, show_grid, font_size, al_label, cocr_label, feni_label, axis_color, grid_color, label_color, title_spacing, fig_width, fig_height, colorbar_xpad, colorbar_title_font_size):
     colorscale = matplotlib_to_plotly_colormap(colormap)
     fig = go.Figure()
 
@@ -114,11 +114,11 @@ def create_ternary_plot(df, color_values, colormap, marker_size, line_thickness,
             colorbar=dict(
                 title=dict(
                     text="Structure (1=FCC,0=BCC)",
-                    font=dict(size=font_size + 4)  # Updated to use title.font
+                    font=dict(size=colorbar_title_font_size)
                 ),
                 thickness=20,
-                xpad=20,  # Increased padding between colorbar and plot
-                tickfont=dict(size=font_size)  # Match tick font size to other labels
+                xpad=colorbar_xpad,
+                tickfont=dict(size=font_size)
             ),
             cmin=0, cmax=1
         ),
@@ -179,11 +179,13 @@ def main():
     grid_thickness = st.sidebar.slider("Grid Line Thickness", 0.1, 5.0, 0.5, 0.1)
     show_grid = st.sidebar.checkbox("Show Grid", value=True)
     font_size = st.sidebar.slider("Font Size (Labels & Ticks)", 8, 20, 12, 1)
+    colorbar_title_font_size = st.sidebar.slider("Colorbar Title Font Size", 8, 24, 16, 1)
     marker_size = st.sidebar.slider("Marker Size", 4, 20, 8, 1)
     axis_color = st.sidebar.color_picker("Axis Color", "#000000")
     grid_color = st.sidebar.color_picker("Grid Color", "#888888")
     label_color = st.sidebar.color_picker("Label Color", "#000000")
     title_spacing = st.sidebar.slider("Title-Vertex Spacing (px)", 0, 100, 30, 1)
+    colorbar_xpad = st.sidebar.slider("Colorbar Padding (px)", 0, 50, 20, 1)
     fig_width = st.sidebar.slider("Figure Width (px)", 400, 1200, 700, 50)
     fig_height = st.sidebar.slider("Figure Height (px)", 400, 1200, 700, 50)
     al_label = st.sidebar.text_input("Al Vertex Label", "Al")
@@ -194,7 +196,7 @@ def main():
     fig = create_ternary_plot(df, color_values, colormap, marker_size, line_thickness, grid_thickness,
                               show_grid, font_size, al_label, cocr_label, feni_label,
                               axis_color, grid_color, label_color, title_spacing,
-                              fig_width, fig_height)
+                              fig_width, fig_height, colorbar_xpad, colorbar_title_font_size)
     st.plotly_chart(fig, use_container_width=True)
 
     # --- Download CSV ---
