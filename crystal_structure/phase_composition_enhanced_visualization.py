@@ -6,7 +6,6 @@ import matplotlib.colors as mcolors
 import numpy as np
 import os
 import logging
-from io import StringIO
 
 # Logging setup
 script_dir = os.path.dirname(os.path.abspath(__file__))
@@ -17,28 +16,9 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# Default data (only used as last resort)
-default_data = """mpea,structure,xAl,xNi,xCr,xCo,xFe
-Al0.000CoCrFeNi,FCC,0.0,0.25,0.25,0.25,0.25
-Al0.100CoCrFeNi,FCC,0.0244,0.2439,0.2439,0.2439,0.2439
-Al0.200CoCrFeNi,FCC,0.0476,0.2381,0.2381,0.2381,0.2381
-Al0.300CoCrFeNi,FCC,0.0698,0.2326,0.2326,0.2326,0.2326
-Al0.400CoCrFeNi,FCC,0.0909,0.2273,0.2273,0.2273,0.2273
-Al0.500CoCrFeNi,FCC,0.1111,0.2222,0.2222,0.2222,0.2222
-Al0.600CoCrFeNi,FCC+BCC,0.1304,0.2174,0.2174,0.2174,0.2174
-Al0.700CoCrFeNi,FCC+BCC,0.1489,0.2128,0.2128,0.2128,0.2128
-Al0.800CoCrFeNi,FCC+BCC,0.1667,0.2083,0.2083,0.2083,0.2083
-Al0.900CoCrFeNi,FCC+BCC,0.1837,0.2041,0.2041,0.2041,0.2041
-Al1.000CoCrFeNi,FCC+BCC,0.2,0.2,0.2,0.2,0.2
-Al1.100CoCrFeNi,BCC,0.2157,0.1961,0.1961,0.1961,0.1961
-Al1.200CoCrFeNi,BCC,0.2308,0.1923,0.1923,0.1923,0.1923
-Al1.300CoCrFeNi,BCC,0.2453,0.1887,0.1887,0.1887,0.1887
-Al1.400CoCrFeNi,BCC,0.2593,0.1852,0.1852,0.1852,0.1852
-Al1.500CoCrFeNi,BCC,0.2727,0.1818,0.1818,0.1818,0.1818"""
-
 # Load CSV
 @st.cache_data
-def load_data(uploaded_file=None, local_path=None, github_url=None):
+def load_data(uploaded_file=None, local_path=None):
     try:
         if uploaded_file is not None:
             df = pd.read_csv(uploaded_file)
@@ -48,16 +28,9 @@ def load_data(uploaded_file=None, local_path=None, github_url=None):
             df = pd.read_csv(local_path)
             logger.info(f"Loaded local CSV file: {local_path}")
             return df, f"Local file: {local_path}"
-        if github_url:
-            df = pd.read_csv(github_url)
-            logger.info(f"Loaded GitHub CSV file: {github_url}")
-            return df, f"GitHub URL: {github_url}"
-
-        # Only use default data if no other source is available
-        logger.warning("No valid CSV file provided; using default data")
-        df = pd.read_csv(StringIO(default_data))
-        return df, "Default data"
-
+        st.error("No valid CSV file provided. Please upload a CSV or ensure the local file exists.")
+        logger.warning("No valid CSV file provided")
+        return None, None
     except Exception as e:
         st.error(f"Error loading CSV: {e}")
         logger.exception(f"Failed to load CSV: {e}")
@@ -219,7 +192,7 @@ def main():
 
     # Data source selection
     st.subheader("Data Source")
-    data_source = st.radio("Select data source:", ["Upload CSV", "Local File", "GitHub URL", "Default Data"])
+    data_source = st.radio("Select data source:", ["Upload CSV", "Local File"])
     st.write(f"Selected data source: {data_source}")
 
     df = None
@@ -228,19 +201,13 @@ def main():
         uploaded_file = st.file_uploader("Upload CSV file", type="csv")
         if uploaded_file:
             df, data_source_info = load_data(uploaded_file=uploaded_file)
-    elif data_source == "Local File":
+    else:  # Local File
         local_file = st.text_input("Enter local CSV file name (in adjacent directory)", "AlyCoCrFeNi_data.csv")
         local_path = os.path.join(os.path.dirname(__file__), "..", local_file)
         df, data_source_info = load_data(local_path=local_path)
-    elif data_source == "GitHub URL":
-        github_url = st.text_input("Enter GitHub raw CSV URL", "")
-        if github_url:
-            df, data_source_info = load_data(github_url=github_url)
-    else:
-        df, data_source_info = load_data()
 
     if df is None or not validate_data(df):
-        st.error("Failed to load a valid CSV file. Please check the file and try again.")
+        st.error("Failed to load a valid CSV file. Please provide a valid CSV file and try again.")
         st.stop()
 
     st.success(f"Data loaded from: {data_source_info}")
