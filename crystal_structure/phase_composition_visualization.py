@@ -1,20 +1,45 @@
 import streamlit as st
 import pandas as pd
-import plotly.figure_factory as ff
 import plotly.graph_objects as go
 import matplotlib.cm as cm
 import matplotlib.colors as mcolors
 import numpy as np
+import os
 
-# Function to load data from GitHub
-@st.cache_data
-def load_data(github_url):
-    try:
-        df = pd.read_csv(github_url)
-        return df
-    except Exception as e:
-        st.error(f"Error loading CSV: {e}")
-        return None
+# Function to generate alloy data
+def generate_hea_data(delta_y):
+    y_values = np.arange(0, 1.51, delta_y)
+    data = {
+        'mpea': [],
+        'structure': [],
+        'xAl': [],
+        'xNi': [],
+        'xCr': [],
+        'xCo': [],
+        'xFe': []
+    }
+    
+    for y in y_values:
+        alloy_name = f"Al{y:.3f}CoCrFeNi"
+        if y <= 0.5:
+            structure = 'FCC'
+        elif 0.5 < y <= 1.0:
+            structure = 'FCC+BCC'
+        else:
+            structure = 'BCC'
+        
+        xAl = y / (y + 4)
+        x_other = (1 - xAl) / 4
+        
+        data['mpea'].append(alloy_name)
+        data['structure'].append(structure)
+        data['xAl'].append(round(xAl, 4))
+        data['xNi'].append(round(x_other, 4))
+        data['xCr'].append(round(x_other, 4))
+        data['xCo'].append(round(x_other, 4))
+        data['xFe'].append(round(x_other, 4))
+    
+    return pd.DataFrame(data)
 
 # Function to assign color values based on structure and y
 def get_color_values(df):
@@ -22,14 +47,12 @@ def get_color_values(df):
     for _, row in df.iterrows():
         alloy_name = row['mpea']
         structure = row['structure']
-        # Extract y from alloy name (e.g., Al0.300CoCrFeNi -> 0.300)
         y = float(alloy_name.split('Al')[1].split('Co')[0])
         if structure == 'FCC':
             color_values.append(1.0)
         elif structure == 'BCC':
             color_values.append(0.0)
         else:  # FCC+BCC
-            # Linear interpolation between 0.5 (1.0) and 1.0 (0.0)
             color_values.append(1.0 - (y - 0.5) / 0.5)
     return color_values
 
@@ -49,16 +72,23 @@ def main():
     st.title("AlyCoCrFeNi Ternary Diagram")
     st.write("Visualize the AlyCoCrFeNi alloy compositions in a ternary diagram with customizable options.")
 
-    # Input for GitHub CSV URL
-    github_url = st.text_input(
-        "Enter GitHub raw CSV URL",
-        "https://raw.githubusercontent.com/USER/REPO/main/AlyCoCrFeNi_data.csv"
+    # User input for delta_y
+    delta_y = st.slider(
+        "Select step size for y (stoichiometry of Al)",
+        min_value=0.001,
+        max_value=0.1,
+        value=0.05,
+        step=0.001,
+        format="%.3f"
     )
 
-    # Load data
-    df = load_data(github_url)
-    if df is None:
-        st.stop()
+    # Generate data
+    df = generate_hea_data(delta_y)
+
+    # Save CSV locally for reference
+    csv_path = os.path.join(os.getcwd(), "AlyCoCrFeNi_data.csv")
+    df.to_csv(csv_path, index=False)
+    st.write(f"Data saved locally at: {csv_path}")
 
     # Calculate ternary coordinates
     df['p_Al'] = df['xAl']
@@ -75,8 +105,6 @@ def main():
     grid_thickness = st.sidebar.slider("Grid Line Thickness", 0.1, 2.0, 0.5, 0.1)
     show_grid = st.sidebar.checkbox("Show Grid", value=True)
     font_size = st.sidebar.slider("Font Size (Labels & Ticks)", 8, 20, 12, 1)
-
-    # Custom labels
     al_label = st.sidebar.text_input("Al Vertex Label", "Al")
     cocr_label = st.sidebar.text_input("CoCr Vertex Label", "Co+Cr")
     feni_label = st.sidebar.text_input("FeNi Vertex Label", "Fe+Ni")
@@ -147,6 +175,15 @@ def main():
 
     # Display plot
     st.plotly_chart(fig, use_container_width=True)
+
+    # Provide CSV download
+    csv = df.to_csv(index=False)
+    st.download_button(
+        label="Download Generated CSV",
+        data=csv,
+        file_name="AlyCoCrFeNi_data.csv",
+        mime="text/csv"
+    )
 
 if __name__ == "__main__":
     main()
