@@ -28,7 +28,7 @@ def load_data(uploaded_file=None, local_path=None):
             df = pd.read_csv(local_path)
             logger.info(f"Loaded local CSV file: {local_path}")
             return df, f"Local file: {local_path}"
-        st.error("No valid CSV file provided. Please upload a CSV or ensure the local file exists.")
+        st.error("No valid CSV file found. Please upload a CSV or ensure the local file exists.")
         logger.warning("No valid CSV file provided")
         return None, None
     except Exception as e:
@@ -192,7 +192,7 @@ def main():
 
     # Data source selection
     st.subheader("Data Source")
-    data_source = st.radio("Select data source:", ["Upload CSV", "Local File"])
+    data_source = st.radio("Select data source:", ["Local File", "Upload CSV"], index=0)  # Local File as default
     st.write(f"Selected data source: {data_source}")
 
     df = None
@@ -201,7 +201,7 @@ def main():
         uploaded_file = st.file_uploader("Upload CSV file", type="csv")
         if uploaded_file:
             df, data_source_info = load_data(uploaded_file=uploaded_file)
-    else:  # Local File
+    else:  # Local File (default)
         local_file = st.text_input("Enter local CSV file name (in adjacent directory)", "AlyCoCrFeNi_data.csv")
         local_path = os.path.join(os.path.dirname(__file__), "..", local_file)
         df, data_source_info = load_data(local_path=local_path)
