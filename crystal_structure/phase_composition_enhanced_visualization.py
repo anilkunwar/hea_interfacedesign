@@ -17,7 +17,7 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# Default data (as fallback)
+# Default data (only used as last resort)
 default_data = """mpea,structure,xAl,xNi,xCr,xCo,xFe
 Al0.000CoCrFeNi,FCC,0.0,0.25,0.25,0.25,0.25
 Al0.100CoCrFeNi,FCC,0.0244,0.2439,0.2439,0.2439,0.2439
@@ -43,44 +43,53 @@ def load_data(uploaded_file=None, local_path=None, github_url=None):
         if uploaded_file is not None:
             df = pd.read_csv(uploaded_file)
             logger.info("Loaded uploaded CSV file")
-        elif local_path and os.path.exists(local_path):
+            return df, "Uploaded CSV"
+        if local_path and os.path.exists(local_path):
             df = pd.read_csv(local_path)
             logger.info(f"Loaded local CSV file: {local_path}")
-        elif github_url:
+            return df, f"Local file: {local_path}"
+        if github_url:
             df = pd.read_csv(github_url)
             logger.info(f"Loaded GitHub CSV file: {github_url}")
-        else:
-            df = pd.read_csv(StringIO(default_data))
-            logger.info("Loaded default CSV data")
+            return df, f"GitHub URL: {github_url}"
 
-        required_columns = ['mpea', 'structure', 'xAl', 'xNi', 'xCr', 'xCo', 'xFe']
-        if not all(col in df.columns for col in required_columns):
-            st.error(f"CSV must contain columns: {', '.join(required_columns)}")
-            logger.error(f"CSV missing required columns: {', '.join(set(required_columns) - set(df.columns))}")
-            return None
+        # Only use default data if no other source is available
+        logger.warning("No valid CSV file provided; using default data")
+        df = pd.read_csv(StringIO(default_data))
+        return df, "Default data"
 
-        # Ensure numeric values
-        for col in ['xAl', 'xNi', 'xCr', 'xCo', 'xFe']:
-            df[col] = pd.to_numeric(df[col], errors='coerce')
-            if df[col].isnull().any():
-                st.error(f"Column '{col}' contains non-numeric or NaN values")
-                logger.error(f"Column '{col}' contains non-numeric or NaN values")
-                return None
-
-        # Validate mpea format
-        for mpea in df['mpea']:
-            try:
-                float(mpea.split('Al')[1].split('Co')[0])
-            except:
-                st.error(f"Invalid alloy name format: {mpea}")
-                logger.error(f"Invalid alloy name format: {mpea}")
-                return None
-
-        return df
     except Exception as e:
         st.error(f"Error loading CSV: {e}")
         logger.exception(f"Failed to load CSV: {e}")
-        return None
+        return None, None
+
+# Validate data
+def validate_data(df):
+    required_columns = ['mpea', 'structure', 'xAl', 'xNi', 'xCr', 'xCo', 'xFe']
+    if not all(col in df.columns for col in required_columns):
+        missing = set(required_columns) - set(df.columns)
+        st.error(f"CSV missing required columns: {', '.join(missing)}")
+        logger.error(f"CSV missing required columns: {', '.join(missing)}")
+        return False
+
+    # Ensure numeric values
+    for col in ['xAl', 'xNi', 'xCr', 'xCo', 'xFe']:
+        df[col] = pd.to_numeric(df[col], errors='coerce')
+        if df[col].isnull().any():
+            st.error(f"Column '{col}' contains non-numeric or NaN values")
+            logger.error(f"Column '{col}' contains non-numeric or NaN values")
+            return False
+
+    # Validate mpea format
+    for mpea in df['mpea']:
+        try:
+            float(mpea.split('Al')[1].split('Co')[0])
+        except:
+            st.error(f"Invalid alloy name format: {mpea}")
+            logger.error(f"Invalid alloy name format: {mpea}")
+            return False
+
+    return True
 
 # Assign color values based on structure and y
 def get_color_values(df):
@@ -91,7 +100,7 @@ def get_color_values(df):
         try:
             y = float(alloy_name.split('Al')[1].split('Co')[0])
         except:
-            return None  # Error already logged in load_data
+            return None  # Error already logged in validate_data
         if structure == 'FCC':
             color_values.append(1.0)
         elif structure == 'BCC':
@@ -110,6 +119,7 @@ def normalize_ternary(df):
     return df_copy
 
 # Get colormap options
+@st.cache_data
 def get_colormap_options():
     return sorted([
         'viridis', 'plasma', 'inferno', 'magma', 'hot', 'cool', 'rainbow', 'jet',
@@ -122,6 +132,7 @@ def get_colormap_options():
     ])
 
 # Convert Matplotlib colormap to Plotly colorscale
+@st.cache_data
 def matplotlib_to_plotly_colormap(cmap_name, n_colors=256):
     try:
         cmap = cm.get_cmap(cmap_name)
@@ -129,7 +140,7 @@ def matplotlib_to_plotly_colormap(cmap_name, n_colors=256):
         return [[i / (n_colors - 1), color] for i, color in enumerate(colors)]
     except ValueError as e:
         logger.error(f"Invalid colormap: {cmap_name}, {e}")
-        return matplotlib_to_plotly_colormap('viridis')  # Fallback to viridis
+        return matplotlib_to_plotly_colormap('viridis')
 
 # Create ternary plot
 def create_ternary_plot(df, color_values, colormap, marker_size, line_thickness, grid_thickness, show_grid, font_size, al_label, cocr_label, feni_label, axis_color, grid_color, label_color, title_spacing):
@@ -208,28 +219,31 @@ def main():
 
     # Data source selection
     st.subheader("Data Source")
-    data_source = st.radio("Select data source:", ["Default Data", "Upload CSV", "Local File", "GitHub URL"])
+    data_source = st.radio("Select data source:", ["Upload CSV", "Local File", "GitHub URL", "Default Data"])
     st.write(f"Selected data source: {data_source}")
 
     df = None
+    data_source_info = None
     if data_source == "Upload CSV":
-        uploaded_file = st.file_uploader("Upload CSV file (optional)", type="csv")
-        df = load_data(uploaded_file=uploaded_file)
+        uploaded_file = st.file_uploader("Upload CSV file", type="csv")
+        if uploaded_file:
+            df, data_source_info = load_data(uploaded_file=uploaded_file)
     elif data_source == "Local File":
         local_file = st.text_input("Enter local CSV file name (in adjacent directory)", "AlyCoCrFeNi_data.csv")
         local_path = os.path.join(os.path.dirname(__file__), "..", local_file)
-        df = load_data(local_path=local_path)
+        df, data_source_info = load_data(local_path=local_path)
     elif data_source == "GitHub URL":
         github_url = st.text_input("Enter GitHub raw CSV URL", "")
-        df = load_data(github_url=github_url)
+        if github_url:
+            df, data_source_info = load_data(github_url=github_url)
     else:
-        df = load_data()
+        df, data_source_info = load_data()
 
-    if df is None:
-        st.warning("Using default data due to invalid input.")
-        df = pd.read_csv(StringIO(default_data))
-        logger.info("Fallback to default data")
+    if df is None or not validate_data(df):
+        st.error("Failed to load a valid CSV file. Please check the file and try again.")
+        st.stop()
 
+    st.success(f"Data loaded from: {data_source_info}")
     st.write("Loaded Data:")
     st.dataframe(df)
 
