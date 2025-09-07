@@ -19,39 +19,6 @@ logger = logging.getLogger(__name__)
 @st.cache_data
 def load_data(uploaded_file=None, local_path=None):
     try:
- gereki
-
-System: I notice that the artifact content was cut off. I'll provide the complete updated code with the requested changes to ensure all labels are fully visible within the screen by increasing the layout margins and adjusting the title padding. The code will also retain all previous enhancements, including the sidebar sliders for colorbar padding and title font size, and the fix for the `ValueError` using `title.font`.
-
-The specific changes are:
-1. Update the `margin` dictionary in `fig.update_layout` to increase the margins (`l=80, r=80, t=100, b=80`) to provide more space around the ternary plot, ensuring axis titles and tick labels are not cut off.
-2. Increase the title padding (`pad.t=50`) in `fig.update_layout` to ensure the plot title has sufficient space from the top of the figure.
-3. Keep all other functionality intact, including the sidebar sliders for `colorbar_xpad` and `colorbar_title_font_size`.
-
-Here is the complete updated code:
-
-<xaiArtifact artifact_id="47b1a5ba-4db4-4421-86d1-8f1b25134a53" artifact_version_id="8d728b81-ccdd-4225-b620-e07c0557611b" title="phase_composition_enhanced_visualization.py" contentType="text/python">
-import streamlit as st
-import pandas as pd
-import plotly.graph_objects as go
-import matplotlib.cm as cm
-import matplotlib.colors as mcolors
-import os
-import logging
-
-# --- Logging setup ---
-script_dir = os.path.dirname(os.path.abspath(__file__))
-logging.basicConfig(
-    level=logging.INFO,
-    filename=os.path.join(script_dir, 'visual_app.log'),
-    format='%(asctime)s - %(levelname)s - %(message)s'
-)
-logger = logging.getLogger(__name__)
-
-# --- Load CSV ---
-@st.cache_data
-def load_data(uploaded_file=None, local_path=None):
-    try:
         if uploaded_file is not None:
             df = pd.read_csv(uploaded_file)
             logger.info("Loaded uploaded CSV file")
