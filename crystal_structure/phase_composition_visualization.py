@@ -4,8 +4,8 @@ import plotly.graph_objects as go
 import matplotlib.cm as cm
 import matplotlib.colors as mcolors
 import numpy as np
-import os
 from io import StringIO
+import os
 
 # Default data
 default_data = """mpea,structure,xAl,xNi,xCr,xCo,xFe
@@ -28,18 +28,17 @@ Al1.500CoCrFeNi,BCC,0.2727,0.1818,0.1818,0.1818,0.1818"""
 
 # Function to load data
 @st.cache_data
-def load_data(uploaded_file=None, local_path=None, github_url=None):
+def load_data(source="default", uploaded_file=None, local_file=None, github_url=None):
     try:
-        if uploaded_file is not None:
+        if source == "upload" and uploaded_file is not None:
             df = pd.read_csv(uploaded_file)
-        elif local_path and os.path.exists(local_path):
-            df = pd.read_csv(local_path)
-        elif github_url:
+        elif source == "local" and local_file is not None and os.path.exists(local_file):
+            df = pd.read_csv(local_file)
+        elif source == "github" and github_url is not None:
             df = pd.read_csv(github_url)
         else:
             df = pd.read_csv(StringIO(default_data))
         
-        # Verify required columns
         required_columns = ['mpea', 'structure', 'xAl', 'xNi', 'xCr', 'xCo', 'xFe']
         if not all(col in df.columns for col in required_columns):
             st.error("CSV must contain columns: mpea, structure, xAl, xNi, xCr, xCo, xFe")
@@ -49,7 +48,7 @@ def load_data(uploaded_file=None, local_path=None, github_url=None):
         st.error(f"Error loading CSV: {e}")
         return None
 
-# Function to assign color values based on structure and y
+# Function to assign color values based on structure
 def get_color_values(df):
     color_values = []
     for _, row in df.iterrows():
@@ -65,84 +64,63 @@ def get_color_values(df):
         elif structure == 'BCC':
             color_values.append(0.0)
         else:  # FCC+BCC
-            color_values.append(1.0 - (y - 0.5) / 0.5)
+            color_values.append(0.5)
     return color_values
-
-# Function to get colormap options
-def get_colormap_options():
-    return sorted([
-        'viridis', 'plasma', 'inferno', 'magma', 'hot', 'cool', 'rainbow', 'jet',
-        'blues', 'greens', 'reds', 'purples', 'oranges', 'greys', 'YlOrRd', 'YlGnBu',
-        'RdBu', 'Spectral', 'PiYG', 'PRGn', 'BrBG', 'PuOr', 'RdGy', 'RdYlBu', 'RdYlGn',
-        'Accent', 'Dark2', 'Paired', 'Pastel1', 'Pastel2', 'Set1', 'Set2', 'Set3',
-        'tab10', 'tab20', 'tab20b', 'tab20c', 'viridis_r', 'plasma_r', 'inferno_r',
-        'magma_r', 'hot_r', 'cool_r', 'rainbow_r', 'jet_r', 'blues_r', 'greens_r',
-        'reds_r', 'purples_r', 'oranges_r', 'greys_r', 'YlOrRd_r', 'YlGnBu_r', 'RdBu_r'
-    ])
-
-# Function to convert Matplotlib colormap to Plotly colorscale
-def matplotlib_to_plotly_colormap(cmap_name, n_colors=256):
-    cmap = cm.get_cmap(cmap_name)
-    colors = [mcolors.rgb2hex(cmap(i / (n_colors - 1))) for i in range(n_colors)]
-    return [[i / (n_colors - 1), color] for i, color in enumerate(colors)]
 
 def main():
     st.title("AlyCoCrFeNi Ternary Diagram")
     st.write("Visualize the AlyCoCrFeNi alloy compositions in a ternary diagram with customizable options.")
 
-    # File input options
-    st.subheader("Data Source")
-    data_source = st.radio("Select data source:", ["Default Data", "Upload CSV", "Local File", "GitHub URL"])
+    # Data source selection
+    source = st.radio("Select data source:", ["Default Data", "Upload CSV", "Local File", "GitHub URL"])
+    uploaded_file = None
+    local_file = None
+    github_url = None
 
-    df = None
-    if data_source == "Upload CSV":
+    if source == "Upload CSV":
         uploaded_file = st.file_uploader("Upload CSV file", type="csv")
-        df = load_data(uploaded_file=uploaded_file)
-    elif data_source == "Local File":
-        local_path = st.text_input("Enter local CSV file name (in adjacent directory)", "AlyCoCrFeNi_data.csv")
-        full_path = os.path.join(os.path.dirname(__file__), "..", local_path)
-        df = load_data(local_path=full_path)
-    elif data_source == "GitHub URL":
-        github_url = st.text_input("Enter GitHub raw CSV URL", "")
-        df = load_data(github_url=github_url)
+        df = load_data("upload", uploaded_file=uploaded_file)
+    elif source == "Local File":
+        local_file = st.text_input("Enter local CSV filename:", "local_data.csv")
+        df = load_data("local", local_file=local_file)
+    elif source == "GitHub URL":
+        github_url = st.text_input("Enter GitHub raw CSV URL:")
+        df = load_data("github", github_url=github_url)
     else:
-        df = load_data()
+        df = load_data("default")
 
     if df is None:
         st.stop()
 
-    # Display data
     st.write("Loaded Data:")
     st.dataframe(df)
 
-    # Calculate ternary coordinates
+    # Compute ternary coordinates
     df['p_Al'] = df['xAl']
     df['p_CoCr'] = df['xCo'] + df['xCr']
     df['p_FeNi'] = df['xFe'] + df['xNi']
 
-    # Get color values
+    # Get colors
     color_values = get_color_values(df)
     if color_values is None:
         st.stop()
 
-    # Sidebar for customization
+    # Sidebar customization
     st.sidebar.header("Plot Customization")
-    colormap = st.sidebar.selectbox("Select Colormap", get_colormap_options(), index=0)
-    line_thickness = st.sidebar.slider("Ternary Line Thickness", 0.5, 5.0, 2.0, 0.1)
+    colormap = st.sidebar.selectbox("Select Colormap", ['viridis', 'plasma', 'inferno', 'magma', 'rainbow'], index=0)
+    line_thickness = st.sidebar.slider("Axis Line Thickness", 0.5, 5.0, 2.0, 0.1)
     grid_thickness = st.sidebar.slider("Grid Line Thickness", 0.1, 2.0, 0.5, 0.1)
     show_grid = st.sidebar.checkbox("Show Grid", value=True)
-    font_size = st.sidebar.slider("Font Size (Labels & Ticks)", 8, 20, 12, 1)
+    font_size = st.sidebar.slider("Font Size", 8, 20, 12, 1)
+
+    # Axis labels
     al_label = st.sidebar.text_input("Al Vertex Label", "Al")
     cocr_label = st.sidebar.text_input("CoCr Vertex Label", "Co+Cr")
     feni_label = st.sidebar.text_input("FeNi Vertex Label", "Fe+Ni")
 
-    # Convert Matplotlib colormap to Plotly colorscale
-    plotly_colorscale = matplotlib_to_plotly_colormap(colormap)
-
-    # Create ternary plot
+    # Build figure
     fig = go.Figure()
 
-    # Add scatter points
     fig.add_trace(
         go.Scatterternary(
             a=df['p_Al'],
@@ -152,9 +130,9 @@ def main():
             marker=dict(
                 size=8,
                 color=color_values,
-                colorscale=plotly_colorscale,
+                colorscale=colormap,
                 showscale=True,
-                colorbar=dict(title="Structure<br>(1=FCC, 0=BCC)", thickness=20),
+                colorbar=dict(title="Structure (1=FCC, 0=BCC)", thickness=20),
                 cmin=0,
                 cmax=1
             ),
@@ -163,53 +141,31 @@ def main():
         )
     )
 
-    # Update layout
-    fig.update_ternaries(
-        aaxis=dict(
-            title=al_label,
-            titlefont=dict(size=font_size),
-            tickfont=dict(size=font_size),
-            linewidth=line_thickness,
-            gridwidth=grid_thickness if show_grid else 0
-        ),
-        baxis=dict(
-            title=cocr_label,
-            titlefont=dict(size=font_size),
-            tickfont=dict(size=font_size),
-            linewidth=line_thickness,
-            gridwidth=grid_thickness if show_grid else 0
-        ),
-        caxis=dict(
-            title=feni_label,
-            titlefont=dict(size=font_size),
-            tickfont=dict(size=font_size),
-            linewidth=line_thickness,
-            gridwidth=grid_thickness if show_grid else 0
-        )
-    )
-
-    # Update layout for better appearance
+    # Update ternary layout
     fig.update_layout(
         title="Ternary Diagram of AlyCoCrFeNi Alloy",
         ternary=dict(
             sum=1,
+            aaxis=dict(title=al_label, linewidth=line_thickness,
+                       gridwidth=grid_thickness if show_grid else 0,
+                       titlefont=dict(size=font_size), tickfont=dict(size=font_size)),
+            baxis=dict(title=cocr_label, linewidth=line_thickness,
+                       gridwidth=grid_thickness if show_grid else 0,
+                       titlefont=dict(size=font_size), tickfont=dict(size=font_size)),
+            caxis=dict(title=feni_label, linewidth=line_thickness,
+                       gridwidth=grid_thickness if show_grid else 0,
+                       titlefont=dict(size=font_size), tickfont=dict(size=font_size)),
             bgcolor="white"
         ),
         showlegend=False,
         margin=dict(l=50, r=50, t=80, b=50)
     )
 
-    # Display plot
     st.plotly_chart(fig, use_container_width=True)
 
-    # Provide CSV download
+    # CSV download option
     csv = df.to_csv(index=False)
-    st.download_button(
-        label="Download Loaded CSV",
-        data=csv,
-        file_name="AlyCoCrFeNi_data.csv",
-        mime="text/csv"
-    )
+    st.download_button("Download Loaded CSV", csv, "AlyCoCrFeNi_data.csv", "text/csv")
 
 if __name__ == "__main__":
     main()
