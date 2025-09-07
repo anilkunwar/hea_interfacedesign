@@ -22,18 +22,18 @@ def load_data(uploaded_file=None, local_path=None):
         if uploaded_file is not None:
             df = pd.read_csv(uploaded_file)
             logger.info("Loaded uploaded CSV file")
-            return df, "Uploaded CSV"
+            return df
         if local_path and os.path.exists(local_path):
             df = pd.read_csv(local_path)
             logger.info(f"Loaded local CSV file: {local_path}")
-            return df, f"Local file: {local_path}"
+            return df
         st.error("No valid CSV file provided. Please upload a CSV or ensure the local file exists.")
         logger.warning("No valid CSV file provided")
-        return None, None
+        return None
     except Exception as e:
         st.error(f"Error loading CSV: {e}")
         logger.exception(f"Failed to load CSV: {e}")
-        return None, None
+        return None
 
 # --- Validate CSV data ---
 def validate_data(df):
@@ -97,7 +97,7 @@ def matplotlib_to_plotly_colormap(cmap_name, n_colors=256):
         return matplotlib_to_plotly_colormap('viridis')
 
 # --- Create ternary plot ---
-def create_ternary_plot(df, color_values, colormap, marker_size, line_thickness, grid_thickness, show_grid, font_size, al_label, cocr_label, feni_label, axis_color, grid_color, label_color, title_spacing):
+def create_ternary_plot(df, color_values, colormap, marker_size, line_thickness, grid_thickness, show_grid, font_size, al_label, cocr_label, feni_label, axis_color, grid_color, label_color, title_spacing, fig_width, fig_height):
     colorscale = matplotlib_to_plotly_colormap(colormap)
     fig = go.Figure()
 
@@ -124,20 +124,25 @@ def create_ternary_plot(df, color_values, colormap, marker_size, line_thickness,
         aaxis=dict(title=dict(text=al_label, font=dict(size=font_size, color=label_color)),
                    tickfont=dict(size=font_size, color=label_color),
                    linewidth=line_thickness, linecolor=axis_color,
-                   gridcolor=grid_color if show_grid else None),
+                   gridcolor=grid_color if show_grid else None, gridwidth=grid_thickness),
         baxis=dict(title=dict(text=cocr_label, font=dict(size=font_size, color=label_color)),
                    tickfont=dict(size=font_size, color=label_color),
                    linewidth=line_thickness, linecolor=axis_color,
-                   gridcolor=grid_color if show_grid else None),
+                   gridcolor=grid_color if show_grid else None, gridwidth=grid_thickness),
         caxis=dict(title=dict(text=feni_label, font=dict(size=font_size, color=label_color)),
                    tickfont=dict(size=font_size, color=label_color),
                    linewidth=line_thickness, linecolor=axis_color,
-                   gridcolor=grid_color if show_grid else None),
+                   gridcolor=grid_color if show_grid else None, gridwidth=grid_thickness),
         bgcolor='white'
     )
 
-    fig.update_layout(title=dict(text="Ternary Diagram of AlyCoCrFeNi Alloy", font=dict(size=font_size+4), y=1-title_spacing/100),
-                      showlegend=False, margin=dict(l=50, r=50, t=80, b=50))
+    fig.update_layout(
+        title=dict(text="Ternary Diagram of AlyCoCrFeNi Alloy", font=dict(size=font_size+4), pad=dict(t=title_spacing)),
+        width=fig_width,
+        height=fig_height,
+        showlegend=False,
+        margin=dict(l=50, r=50, t=80, b=50)
+    )
 
     return fig
 
@@ -146,18 +151,15 @@ def main():
     st.title("AlyCoCrFeNi Ternary Diagram")
     st.write("Visualize AlyCoCrFeNi alloy compositions with customizable ternary plot.")
 
-    # --- Data source selection ---
+    # --- Data source ---
     uploaded_file = st.file_uploader("Upload CSV (optional)", type="csv")
     default_file = os.path.join(script_dir, "AlyCoCrFeNi_data.csv")
 
-    # Load priority: uploaded > local default
-    df, data_info = load_data(uploaded_file=uploaded_file, local_path=default_file)
+    # Load priority: uploaded > local
+    df = load_data(uploaded_file=uploaded_file, local_path=default_file)
     if df is None or not validate_data(df):
         st.error("Failed to load a valid CSV file. Please provide a valid CSV.")
         st.stop()
-
-    st.success(f"Data loaded from: {data_info}")
-    st.dataframe(df)
 
     df = normalize_ternary(df)
     color_values = get_color_values(df)
@@ -166,14 +168,16 @@ def main():
     st.sidebar.header("Plot Customization")
     colormap = st.sidebar.selectbox("Select Colormap", get_colormap_options(), index=0)
     line_thickness = st.sidebar.slider("Axis Line Thickness", 0.5, 5.0, 2.0, 0.1)
-    grid_thickness = st.sidebar.slider("Grid Line Thickness", 0.1, 2.0, 0.5, 0.1)
+    grid_thickness = st.sidebar.slider("Grid Line Thickness", 0.1, 5.0, 0.5, 0.1)
     show_grid = st.sidebar.checkbox("Show Grid", value=True)
-    font_size = st.sidebar.slider("Font Size (Labels & Ticks)", 8, 100, 50, 1)
+    font_size = st.sidebar.slider("Font Size (Labels & Ticks)", 8, 20, 12, 1)
     marker_size = st.sidebar.slider("Marker Size", 4, 20, 8, 1)
     axis_color = st.sidebar.color_picker("Axis Color", "#000000")
     grid_color = st.sidebar.color_picker("Grid Color", "#888888")
     label_color = st.sidebar.color_picker("Label Color", "#000000")
-    title_spacing = st.sidebar.slider("Title-Vertex Spacing", 0, 100, 0, 1)
+    title_spacing = st.sidebar.slider("Title-Vertex Spacing (px)", 0, 100, 30, 1)
+    fig_width = st.sidebar.slider("Figure Width (px)", 400, 1200, 700, 50)
+    fig_height = st.sidebar.slider("Figure Height (px)", 400, 1200, 700, 50)
     al_label = st.sidebar.text_input("Al Vertex Label", "Al")
     cocr_label = st.sidebar.text_input("CoCr Vertex Label", "Co+Cr")
     feni_label = st.sidebar.text_input("FeNi Vertex Label", "Fe+Ni")
@@ -181,7 +185,8 @@ def main():
     # --- Plot ---
     fig = create_ternary_plot(df, color_values, colormap, marker_size, line_thickness, grid_thickness,
                               show_grid, font_size, al_label, cocr_label, feni_label,
-                              axis_color, grid_color, label_color, title_spacing)
+                              axis_color, grid_color, label_color, title_spacing,
+                              fig_width, fig_height)
     st.plotly_chart(fig, use_container_width=True)
 
     # --- Download CSV ---
