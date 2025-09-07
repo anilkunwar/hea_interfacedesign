@@ -10,3 +10,6 @@ advanced:
 # Structure - Composition Data Interpolation  
 [![atomisticcalculations](https://img.shields.io/badge/xcrystal-streamlit-red)](https://phase-heacomposition.streamlit.app/)
 
+
+[![atomisticcalculations](https://img.shields.io/badge/ternaryDiagram-streamlit-red)](https://hea-phasecompositionvisualization.streamlit.app/)
+
