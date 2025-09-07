@@ -185,7 +185,7 @@ def main():
     grid_color = st.sidebar.color_picker("Grid Color", "#888888")
     label_color = st.sidebar.color_picker("Label Color", "#000000")
     title_spacing = st.sidebar.slider("Title-Vertex Spacing (px)", 0, 100, 30, 1)
-    colorbar_xpad = st.sidebar.slider("Colorbar Padding (px)", 0, 100, 20, 1)
+    colorbar_xpad = st.sidebar.slider("Colorbar Padding (px)", 0, 100, 50, 1)
     fig_width = st.sidebar.slider("Figure Width (px)", 400, 1200, 700, 50)
     fig_height = st.sidebar.slider("Figure Height (px)", 400, 1200, 700, 50)
     al_label = st.sidebar.text_input("Al Vertex Label", "Al")
