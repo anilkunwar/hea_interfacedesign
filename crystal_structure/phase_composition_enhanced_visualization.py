@@ -106,7 +106,7 @@ def main():
     line_thickness = float(st.sidebar.slider("Axis Line Thickness", 0.5, 5.0, 2.0, 0.1))
     grid_thickness = float(st.sidebar.slider("Grid Line Thickness", 0.1, 2.0, 0.5, 0.1))
     show_grid = st.sidebar.checkbox("Show Grid", value=True)
-    font_size = int(st.sidebar.slider("Font Size", 8, 20, 12, 1))
+    font_size = int(st.sidebar.slider("Font Size", 8, 100, 50, 1))
     marker_size = int(st.sidebar.slider("Marker Size", 4, 20, 8, 1))
 
     al_label = st.sidebar.text_input("Al Vertex Label", "Al")
@@ -118,7 +118,7 @@ def main():
     axis_color = st.sidebar.color_picker("Axis Color", "#000000")
     grid_color = st.sidebar.color_picker("Grid Color", "#888888")
     label_color = st.sidebar.color_picker("Label Color", "#000000")
-    title_spacing = float(st.sidebar.slider("Title-Vertex Spacing", 0, 100, 30, 1))
+    title_spacing = float(st.sidebar.slider("Title-Vertex Spacing", 0, 100, 0, 1))
 
     # --- Plot ---
     cmap = cm.get_cmap(colormap)
